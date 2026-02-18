@@ -1,0 +1,87 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "MacroAnalysisResult",
+    "description": "Output dello Stadio B (MacroAnalyzer) — analisi emotiva di un blocco",
+    "type": "object",
+    "required": [
+        "job_id",
+        "block_analysis"
+    ],
+    "properties": {
+        "job_id": {
+            "type": "string",
+            "format": "uuid"
+        },
+        "block_analysis": {
+            "type": "object",
+            "required": [
+                "valence",
+                "arousal",
+                "tension",
+                "primary_emotion"
+            ],
+            "properties": {
+                "valence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "arousal": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "tension": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "primary_emotion": {
+                    "enum": [
+                        "neutral",
+                        "joy",
+                        "sadness",
+                        "anger",
+                        "fear",
+                        "suspense",
+                        "curiosity"
+                    ]
+                },
+                "secondary_emotion": {
+                    "type": "string"
+                },
+                "setting": {
+                    "type": "string"
+                },
+                "has_dialogue": {
+                    "type": "boolean"
+                },
+                "audio_cues": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "narrative_markers": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "relative_position": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1
+                    },
+                    "event": {
+                        "type": "string"
+                    },
+                    "mood_shift": {
+                        "type": "string"
+                    }
+                }
+            }
+        }
+    }
+}

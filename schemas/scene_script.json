@@ -1,0 +1,178 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "SceneScript",
+    "description": "Output dello Stadio C (SceneDirector) — audio script per una scena",
+    "type": "object",
+    "required": [
+        "scene_id",
+        "text_content",
+        "voice_direction",
+        "audio_layers"
+    ],
+    "properties": {
+        "job_id": {
+            "type": "string",
+            "format": "uuid"
+        },
+        "book_id": {
+            "type": "string"
+        },
+        "chapter_id": {
+            "type": "string"
+        },
+        "scene_id": {
+            "type": "string"
+        },
+        "scene_number": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "text_content": {
+            "type": "string",
+            "minLength": 1
+        },
+        "start_char_index": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "end_char_index": {
+            "type": "integer",
+            "minimum": 0
+        },
+        "word_count": {
+            "type": "integer",
+            "minimum": 1
+        },
+        "voice_direction": {
+            "type": "object",
+            "required": [
+                "emotion_description",
+                "pace_factor"
+            ],
+            "properties": {
+                "emotion_description": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "pace_factor": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "maximum": 1.5
+                },
+                "pitch_shift": {
+                    "type": "integer",
+                    "minimum": -5,
+                    "maximum": 5
+                },
+                "energy": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "recommended_silence_before_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "recommended_silence_after_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        },
+        "timing_estimate": {
+            "type": "object",
+            "properties": {
+                "estimated_duration_seconds": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "words_per_minute": {
+                    "type": "integer",
+                    "minimum": 50,
+                    "maximum": 300
+                }
+            }
+        },
+        "audio_layers": {
+            "type": "object",
+            "required": [
+                "music"
+            ],
+            "properties": {
+                "ambient": {
+                    "type": "object",
+                    "properties": {
+                        "soundscape_tag": {
+                            "type": "string"
+                        },
+                        "volume_db": {
+                            "type": "number",
+                            "minimum": -60,
+                            "maximum": 0
+                        },
+                        "fade_in_ms": {
+                            "type": "integer",
+                            "minimum": 0
+                        },
+                        "fade_out_ms": {
+                            "type": "integer",
+                            "minimum": 0
+                        }
+                    }
+                },
+                "music": {
+                    "type": "object",
+                    "required": [
+                        "prompt_for_musicgen"
+                    ],
+                    "properties": {
+                        "prompt_for_musicgen": {
+                            "type": "string",
+                            "minLength": 10,
+                            "maxLength": 500
+                        },
+                        "intensity_curve": {
+                            "type": "array",
+                            "items": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1
+                            },
+                            "minItems": 3,
+                            "maxItems": 3
+                        },
+                        "ducking_db": {
+                            "type": "number",
+                            "minimum": -30,
+                            "maximum": 0
+                        }
+                    }
+                },
+                "spot_effects": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "effect_name",
+                            "offset_from_scene_start_ms"
+                        ],
+                        "properties": {
+                            "effect_name": {
+                                "type": "string"
+                            },
+                            "offset_from_scene_start_ms": {
+                                "type": "integer",
+                                "minimum": 0
+                            },
+                            "volume_db": {
+                                "type": "number",
+                                "minimum": -60,
+                                "maximum": 0
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

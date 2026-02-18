@@ -1,0 +1,41 @@
+# DIAS gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+
+# Audio output (generated, large files)
+storage/
+*.wav
+*.mp3
+*.flac
+
+# Models (too large for git)
+models/
+
+# State (runtime)
+state/*.json
+
+# Secrets
+secrets/
+*.key
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+docker/volumes/
+
+# Temp
+*.tmp
+*.bak

@@ -1,0 +1,74 @@
+# DIAS Pipeline Configuration
+# Basato su blueprint v3 sezione 7
+
+# Google GenAI Configuration
+google:
+  model_flash_lite: "gemini-2.5-flash-lite-preview-06-17"
+  rate_limit_seconds: 30
+  rate_limit_penalty_seconds: 120
+  max_retries: 3
+  temperature: 0.2
+  response_mime_type: "application/json"
+
+# Local Models (GPU Worker)
+models:
+  qwen3_tts:
+    name: "Qwen3-TTS-12Hz-1.7B-Base"
+    device: "cuda"
+    max_memory_gb: 8
+    batch_size: 1
+
+  musicgen:
+    name: "musicgen-small"
+    device: "cuda"
+    max_memory_gb: 4
+
+# Redis
+redis:
+  host: "192.168.1.120"
+  port: 6379
+  db: 0
+  decode_responses: true
+  retry_attempts: 3
+  retry_backoff_base: 1.0
+
+# Queue names (Redis Lists — BRPOP)
+queues:
+  ingestion: "dias:queue:1:ingestion"
+  macro_analysis: "dias:queue:2:macro_analysis"
+  scene_director: "dias:queue:3:scene_director"
+  voice_gen: "dias:queue:4:voice_gen"
+  music_gen: "dias:queue:5:music_gen"
+  mixing: "dias:queue:6:mixing"
+  mastering: "dias:queue:7:mastering"
+
+# Storage
+storage:
+  base_path: "/mnt/dias/storage"
+  temp_path: "/mnt/dias/temp"
+  voice_output: "{base_path}/audio/voice/{book_id}"
+  music_output: "{base_path}/audio/music/{book_id}"
+  final_output: "{base_path}/output/{book_id}"
+
+# Processing
+pipeline:
+  max_chunk_words: 2500
+  chunk_overlap_words: 100
+  scene_max_words: 300
+  default_voice_sample: "/voices/default_narrator.wav"
+
+# Audio Standards
+audio:
+  sample_rate: 48000
+  voice_channels: 1
+  music_channels: 2
+  final_bitrate: "320k"
+  target_lufs: -16
+  head_silence_seconds: 2
+  tail_silence_seconds: 3
+
+# Logging
+logging:
+  level: "INFO"
+  format: "json"
+  file: null  # null = solo stderr, oppure path per file rotante
