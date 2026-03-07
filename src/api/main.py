@@ -12,6 +12,9 @@ from src.common.registry import ActiveTaskTracker
 
 app = FastAPI(title="DIAS API Hub", version="1.0.0")
 
+# Base directory for data scanning (execution root)
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
 # Enable CORS for SvelteKit
 app.add_middleware(
     CORSMiddleware,
@@ -54,7 +57,7 @@ async def list_projects() -> List[Dict[str, Any]]:
     """
     List all projects based on files in data/stage_a/output/
     """
-    projects_dir = Path(config.base_dir) / "data" / "stage_a" / "output"
+    projects_dir = BASE_DIR / "data" / "stage_a" / "output"
     if not projects_dir.exists():
         return []
     
@@ -83,7 +86,7 @@ async def get_project_status(project_id: str) -> Dict[str, Any]:
     Detailed progress for a specific book.
     Calculates progress by comparing file counts across stages A through G.
     """
-    base_path = Path(config.base_dir) / "data"
+    base_path = BASE_DIR / "data"
     stages = ["stage_a", "stage_b", "stage_c", "stage_d", "stage_e", "stage_f", "stage_g"]
     
     stats = {}
@@ -189,7 +192,7 @@ async def get_project_outputs(project_id: str) -> List[Dict[str, Any]]:
     """
     Lists all generated assets (WAV files) for a specific project.
     """
-    output_dir = Path(config.base_dir) / "data" / "stage_d" / "output"
+    output_dir = BASE_DIR / "data" / "stage_d" / "output"
     if not output_dir.exists():
         return []
     
