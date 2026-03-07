@@ -9,7 +9,7 @@ Ogni stadio produce e consuma modelli definiti qui.
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
@@ -18,16 +18,46 @@ from pydantic import BaseModel, Field, field_validator
 # --- Enums ---
 
 class PrimaryEmotion(str, Enum):
-    NEUTRAL = "neutral"
-    JOY = "joy"
-    SADNESS = "sadness"
-    ANGER = "anger"
-    FEAR = "fear"
-    SUSPENSE = "suspense"
-    CURIOSITY = "curiosity"
+    NEUTRO = "neutro"
+    GIOIA = "gioia"
+    TRISTEZZA = "tristezza"
+    RABBIA = "rabbia"
+    PAURA = "paura"
+    TENSIONE = "tensione"
+    CURIOSITA = "curiosita"
+    RELAX = "relax"
+    MELANCONIA = "melanconia"
+    STUPORE = "stupore"
+    DETERMINAZIONE = "determinazione"
+    ANSIA = "ansia"
+    NOSTALGIA = "nostalgia"
+    PREOCCUPAZIONE = "preoccupazione"
+    SPERANZA = "speranza"
+    CONFUSIONE = "confusione"
+    SOLITUDINE = "solitudine"
+    ECCITAZIONE = "eccitazione"
+    ISOLAMENTO = "isolamento"
+    MISTERO = "mistero"
+    ATTESA = "attesa"
+    FRUSTRAZIONE = "frustrazione"
+    RANCORE = "rancore"
+    MALINCONIA = "malinconia"
 
 
 # --- Stadio A: Ingestion Output ---
+
+class BookMetadata(BaseModel):
+    """Metadati di un libro processato dallo stadio A."""
+    book_id: str = Field(default_factory=lambda: str(uuid4()))
+    title: str
+    author: str = ""
+    language: str = "en"
+    word_count: int = Field(ge=0)
+    chapter_count: int = Field(ge=1)
+    file_path: str
+    file_format: str
+    processing_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 
 class IngestionBlock(BaseModel):
     """Messaggio prodotto dallo stadio A (TextIngester) per ogni blocco di testo."""
@@ -65,11 +95,44 @@ class BlockAnalysis(BaseModel):
     audio_cues: List[str] = Field(default_factory=list)
 
 
+class SemanticEntity(BaseModel):
+    """Entità semantica estratta dal testo."""
+    entity_id: str
+    text: str
+    entity_type: str
+    emotional_tone: Optional[PrimaryEmotion] = PrimaryEmotion.NEUTRO
+    confidence: float = Field(ge=0.0, le=1.0)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SemanticRelation(BaseModel):
+    """Relazione tra entità."""
+    relation_id: str
+    source_entity_id: str
+    target_entity_id: str
+    relation_type: str
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class SemanticConcept(BaseModel):
+    """Concetto chiave estratto dal testo."""
+    concept_id: str
+    concept: str
+    definition: str
+    emotional_tone: Optional[PrimaryEmotion] = PrimaryEmotion.NEUTRO
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
 class MacroAnalysisResult(BaseModel):
     """Messaggio prodotto dallo stadio B (MacroAnalyzer) per ogni blocco."""
     job_id: str = Field(default_factory=lambda: str(uuid4()))
+    book_id: str
+    block_id: str
     block_analysis: BlockAnalysis
     narrative_markers: List[NarrativeMarker] = Field(default_factory=list)
+    entities: List[SemanticEntity] = Field(default_factory=list)
+    relations: List[SemanticRelation] = Field(default_factory=list)
+    concepts: List[SemanticConcept] = Field(default_factory=list)
 
 
 # --- Stadio B→C: Chapter Aggregation ---
@@ -160,6 +223,13 @@ class Transitions(BaseModel):
     to_next: str = "crossfade_1500ms"
 
 
+class TTSBackend(str, Enum):
+    FISH_S1_MINI = "fish-s1-mini"
+    ORPHEUS = "orpheus"
+    ELEVENLABS = "elevenlabs"
+    KOKORO = "kokoro"
+
+
 class AudioLayers(BaseModel):
     """Tutti i layer audio per una scena."""
     ambient: Optional[AmbientLayer] = None
@@ -179,6 +249,9 @@ class SceneScript(BaseModel):
     scene_id: str
     scene_number: int = Field(ge=0)
     text_content: str = Field(min_length=1)
+    fish_annotated_text: Optional[str] = None
+    orpheus_annotated_text: Optional[str] = None
+    tts_backend: TTSBackend = TTSBackend.FISH_S1_MINI
     start_char_index: int = Field(ge=0, default=0)
     end_char_index: int = Field(ge=0, default=0)
     word_count: int = Field(ge=1)
@@ -186,3 +259,27 @@ class SceneScript(BaseModel):
     timing_estimate: Optional[TimingEstimate] = None
     audio_layers: AudioLayers
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# --- Master Registry ---
+
+class TaskStatus(str, Enum):
+    """Stati possibili di un task nel Master Registry."""
+    PENDING = "PENDING"
+    IN_FLIGHT = "IN_FLIGHT"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    TIMEOUT = "TIMEOUT"
+
+
+class RegistryEntry(BaseModel):
+    """Voce del Master Registry di DIAS per il tracciamento dei task."""
+    task_id: str
+    status: TaskStatus
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    attempts: int = Field(default=0, ge=0)
+    worker_id: Optional[str] = None
+    callback_key: Optional[str] = None
+    error: Optional[str] = None
+    output_path: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)

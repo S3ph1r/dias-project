@@ -1,0 +1,45 @@
+# DIAS Stage A - Text Ingester Requirements
+# Requirements per parsing completo di PDF, EPUB, DOCX con text chunking intelligente
+
+# PDF Parsing - Dual strategy per massima compatibilità
+PyMuPDF==1.24.9  # Primary: performance superiore, supporta PDF complessi
+pdfplumber==0.11.0  # Fallback: 100% open source, fallback sicuro
+
+# EPUB Parsing
+beautifulsoup4==4.12.3  # HTML/XML parsing per EPUB
+lxml==5.3.0  # Parser veloce per BeautifulSoup
+ebooklib==0.18  # Libreria EPUB specifica
+
+# DOCX Parsing  
+python-docx==1.1.2  # Parser DOCX ufficiale
+
+# Text Processing
+nltk==3.9.1  # Natural Language Processing per chunking intelligente
+spacy==3.8.2  # NLP avanzato per sentence boundary detection
+
+# Redis Integration (già in common ma riconfermiamo)
+redis==5.2.0
+fakeredis==2.26.1  # Testing
+
+# Validation
+jsonschema==4.23.0  # JSON schema validation
+pydantic==2.10.3  # Data validation (già in common)
+
+# Testing
+pytest==8.3.4
+pytest-cov==6.0.0
+pytest-asyncio==0.25.0
+pytest-mock==3.14.0
+
+# Development
+black==24.10.0  # Code formatting
+flake8==7.1.1  # Linting
+mypy==1.14.1  # Type checking
+
+# Test Fixtures Generation
+reportlab==4.2.0  # PDF generation for test fixtures
+
+# Utilities
+tqdm==4.67.1  # Progress bars
+python-magic==0.4.27  # File type detection
+chardet==5.2.0  # Character encoding detection

@@ -13,6 +13,7 @@ Wrapper su redis.Redis con:
 import json
 import time
 import logging
+import os
 from typing import Any, Optional
 
 import redis
@@ -25,35 +26,48 @@ class DiasRedis:
 
     def __init__(
         self,
-        host: str = "192.168.1.120",
-        port: int = 6379,
-        db: int = 0,
-        decode_responses: bool = True,
-        retry_attempts: int = 3,
-        retry_backoff_base: float = 1.0,
+        host: str = None,
+        port: int = None,
+        db: int = None,
+        decode_responses: bool = None,
+        retry_attempts: int = None,
+        retry_backoff_base: float = None,
         client: Optional[redis.Redis] = None,
+        logger: Optional[logging.Logger] = None,
     ):
         """
         Args:
             client: Client Redis iniettato (per testing con fakeredis).
                     Se fornito, gli altri parametri vengono ignorati.
+            logger: Optional logger for debugging
         """
+        # Use environment variables as defaults if not provided
+        self.host = host or os.getenv('REDIS_HOST', 'localhost')
+        self.port = port or int(os.getenv('REDIS_PORT', '6379'))
+        self.db = db or int(os.getenv('REDIS_DB', '0'))
+        self.decode_responses = decode_responses if decode_responses is not None else True
+        self.retry_attempts = retry_attempts or int(os.getenv('REDIS_RETRY_ATTEMPTS', '3'))
+        self.retry_backoff_base = retry_backoff_base or float(os.getenv('REDIS_RETRY_BACKOFF', '1.0'))
+        
+        # Use provided logger or create default
+        self.logger = logger or get_logger("redis_client")
         self.logger = get_logger("redis_client")
 
         if client is not None:
             self._client = client
         else:
+            self.logger.info(f"Connecting to Redis at {self.host}:{self.port}")
             self._client = redis.Redis(
-                host=host,
-                port=port,
-                db=db,
-                decode_responses=decode_responses,
+                host=self.host,
+                port=self.port,
+                db=self.db,
+                decode_responses=self.decode_responses,
                 socket_connect_timeout=5,
-                socket_timeout=10,
+                socket_timeout=360,
             )
 
-        self._retry_attempts = retry_attempts
-        self._retry_backoff_base = retry_backoff_base
+        self._retry_attempts = self.retry_attempts
+        self._retry_backoff_base = self.retry_backoff_base
 
     @property
     def client(self) -> redis.Redis:

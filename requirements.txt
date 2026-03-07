@@ -1,0 +1,26 @@
+# DIAS Core Dependencies
+# Requirements base per il sistema DIAS
+
+# Configuration & Validation
+pyyaml==6.0.2  # YAML parsing per config
+pydantic==2.10.3  # Data validation (già in stage-a)
+
+# Redis
+redis==5.2.0  # Redis client (già in stage-a)
+fakeredis==2.26.1  # Testing Redis mock (già in stage-a)
+
+# Logging
+python-json-logger==3.2.1  # JSON logging per systemd
+
+# Utilities
+python-dotenv==1.0.1  # Environment variables
+pathlib2==2.3.7  # Path utilities (compatibilità)
+
+# Development & Testing
+pytest==8.3.4  # Testing framework (già in stage-a)
+pytest-cov==6.0.0  # Coverage (già in stage-a)
+pytest-asyncio==0.25.0  # Async testing (già in stage-a)
+pytest-mock==3.14.0  # Mocking (già in stage-a)
+black==24.10.0  # Code formatting (già in stage-a)
+flake8==7.1.1  # Linting (già in stage-a)
+mypy==1.14.1  # Type checking (già in stage-a)

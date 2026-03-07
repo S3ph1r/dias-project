@@ -1,0 +1,5 @@
+# Stage C - Scene Director Requirements
+-r requirements-common.txt
+
+google-generativeai>=0.3.0
+pydantic>=2.0.0

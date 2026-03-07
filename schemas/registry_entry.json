@@ -1,0 +1,59 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "RegistryEntry",
+    "description": "Voce del Master Registry di DIAS per il tracciamento dei task",
+    "type": "object",
+    "required": [
+        "task_id",
+        "status",
+        "updated_at"
+    ],
+    "properties": {
+        "task_id": {
+            "type": "string",
+            "description": "ID univoco del task (es. scene-ch001-005)"
+        },
+        "status": {
+            "type": "string",
+            "enum": [
+                "PENDING",
+                "IN_FLIGHT",
+                "COMPLETED",
+                "FAILED",
+                "TIMEOUT"
+            ],
+            "description": "Stato attuale del task nella pipeline"
+        },
+        "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp ISO8601 dell'ultimo aggiornamento di stato"
+        },
+        "attempts": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0,
+            "description": "Numero di tentativi di esecuzione effettuati"
+        },
+        "worker_id": {
+            "type": "string",
+            "description": "Identificativo del worker (es. aria-pc-01) che ha preso in carico il task"
+        },
+        "callback_key": {
+            "type": "string",
+            "description": "Chiave Redis usata per la callback del risultato"
+        },
+        "error": {
+            "type": "string",
+            "description": "Messaggio di errore in caso di stato FAILED o TIMEOUT"
+        },
+        "output_path": {
+            "type": "string",
+            "description": "Percorso locale o URL del file prodotto (se COMPLETED)"
+        },
+        "metadata": {
+            "type": "object",
+            "description": "Dati aggiuntivi specifici per il tipo di task"
+        }
+    }
+}

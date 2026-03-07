@@ -7,7 +7,8 @@
         "scene_id",
         "text_content",
         "voice_direction",
-        "audio_layers"
+        "audio_layers",
+        "tts_backend"
     ],
     "properties": {
         "job_id": {
@@ -30,6 +31,24 @@
         "text_content": {
             "type": "string",
             "minLength": 1
+        },
+        "fish_annotated_text": {
+            "type": "string",
+            "description": "Testo annotato con marcatori Fish S1-mini (parentesi tonde e quadre)"
+        },
+        "orpheus_annotated_text": {
+            "type": "string",
+            "description": "DEPRECATED: Testo annotato con tag Orpheus TTS"
+        },
+        "tts_backend": {
+            "type": "string",
+            "enum": [
+                "fish-s1-mini",
+                "orpheus",
+                "elevenlabs",
+                "kokoro"
+            ],
+            "description": "Backend TTS da utilizzare per questa scena"
         },
         "start_char_index": {
             "type": "integer",

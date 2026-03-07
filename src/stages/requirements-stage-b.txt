@@ -1,0 +1,29 @@
+# DIAS Stage B - Semantic Analyzer Requirements
+# Requirements per analisi semantica con Google Gemini 2.5 Flash API
+
+# Google Gemini API - Official SDK
+google-genai==0.3.0  # SDK ufficiale per Gemini API (legacy SDK deprecato nov 2025)
+
+# Redis Integration (condivisione con Stage A)
+redis==5.2.0
+fakeredis==2.26.1  # Testing
+
+# Data Processing
+pydantic==2.10.3  # Data validation
+jsonschema==4.23.0  # JSON schema validation
+
+# Testing
+pytest==8.3.4
+pytest-cov==6.0.0
+pytest-asyncio==0.25.0
+pytest-mock==3.14.0
+
+# Development
+black==24.10.0  # Code formatting
+flake8==7.1.1  # Linting
+mypy==1.14.1  # Type checking
+
+# Utilities
+tqdm==4.67.1  # Progress bars
+python-dateutil==2.9.0  # Date/time utilities
+python-dotenv==1.0.1  # Environment variables loading

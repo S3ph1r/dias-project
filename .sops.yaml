@@ -1,0 +1,4 @@
+creation_rules:
+- age: age1808praju7clhp3q4e3fjp74nms6nmd3vvr4zleg54hw92ngdkq9sntzzjt
+  encrypted_regex: ^(password|token|api_key|secret|key|ssh_key|private_key)$
+  path_regex: secrets/.*\.enc\.yaml$

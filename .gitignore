@@ -36,6 +36,12 @@ Thumbs.db
 # Docker volumes
 docker/volumes/
 
+# Data (runtime, too large/private)
+data/
+outputs/
+voices/
+*.log
+
 # Temp
 *.tmp
 *.bak

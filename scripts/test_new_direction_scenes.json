@@ -1,0 +1,137 @@
+[
+  {
+    "job_id": "job_20260305_003907",
+    "book_id": "test_cronache",
+    "chapter_id": "chapter_001",
+    "scene_id": "scene_000",
+    "scene_number": 0,
+    "scene_label": "narrazione_introduzione",
+    "text_content": "Cronache del Silicio. Libro Primo: L'Architetto dei Fantasmi. Si dice che una citt\u00e0 non sia fatta di cemento e luce, ma di storie. Se cos\u00ec fosse, Neo-Kyoto era un'antologia infinita scritta in una lingua che nessuno poteva pi\u00f9 leggere per intero.",
+    "qwen3_instruct": "Warm Italian male voice, professional audiobook narrator. Very slow and deliberate pace, articulate every word with authority and long dramatic pauses, conveying a sense of profound mystery and scale.",
+    "fish_annotated_text": null,
+    "tts_backend": "qwen3-tts-1.7b",
+    "primary_emotion": "speranza",
+    "word_count": 41,
+    "voice_direction": {
+      "emotion_description": "Tono narrativo standard",
+      "pace_factor": 1.0,
+      "pitch_shift": 0,
+      "energy": 0.6,
+      "recommended_silence_before_ms": 500,
+      "recommended_silence_after_ms": 1000
+    },
+    "audio_layers": {
+      "music": {
+        "prompt_for_musicgen": "Texture ambientale discreta, sottofondo narrativo neutro",
+        "intensity_curve": [
+          0.3,
+          0.5,
+          0.4
+        ],
+        "ducking_db": -15
+      },
+      "ambient": {
+        "soundscape_tag": "speranza_room_tone",
+        "volume_db": -25,
+        "fade_in_ms": 2000,
+        "fade_out_ms": 3000
+      },
+      "spot_effects": []
+    },
+    "timing_estimate": {
+      "estimated_duration_seconds": 16.4,
+      "words_per_minute": 150
+    },
+    "processing_timestamp": "2026-03-06T16:20:10.782286"
+  },
+  {
+    "job_id": "job_20260305_003907",
+    "book_id": "test_cronache",
+    "chapter_id": "chapter_001",
+    "scene_id": "scene_001",
+    "scene_number": 1,
+    "scene_label": "descrizione_neo_kyoto_e_kaelen",
+    "text_content": "Era una citt\u00e0 costruita su strati di altre citt\u00e0, un palinsesto di futuri sognati e passati dimenticati. Viveva in uno stato di presente perpetuo, illuminata da un sole artificiale e lavata da una pioggia che aveva il sapore metallico del progresso. E in questo presente senza memoria, c'erano uomini come Kaelen, ossessionati dal tentativo di ricostruire le pagine strappate.",
+    "qwen3_instruct": "Warm Italian male voice, professional audiobook narrator. Slow and measured pace, lingering on descriptive adjectives to build atmosphere. Convey a sense of both the artificiality and the underlying yearning for lost history, with a hint of Kaelen's quiet determination.",
+    "fish_annotated_text": null,
+    "tts_backend": "qwen3-tts-1.7b",
+    "primary_emotion": "speranza",
+    "word_count": 59,
+    "voice_direction": {
+      "emotion_description": "Tono narrativo standard",
+      "pace_factor": 1.0,
+      "pitch_shift": 0,
+      "energy": 0.6,
+      "recommended_silence_before_ms": 500,
+      "recommended_silence_after_ms": 1000
+    },
+    "audio_layers": {
+      "music": {
+        "prompt_for_musicgen": "Texture ambientale discreta, sottofondo narrativo neutro",
+        "intensity_curve": [
+          0.3,
+          0.5,
+          0.4
+        ],
+        "ducking_db": -15
+      },
+      "ambient": {
+        "soundscape_tag": "speranza_room_tone",
+        "volume_db": -25,
+        "fade_in_ms": 2000,
+        "fade_out_ms": 3000
+      },
+      "spot_effects": []
+    },
+    "timing_estimate": {
+      "estimated_duration_seconds": 23.599999999999998,
+      "words_per_minute": 150
+    },
+    "processing_timestamp": "2026-03-06T16:20:10.782303"
+  },
+  {
+    "job_id": "job_20260305_003907",
+    "book_id": "test_cronache",
+    "chapter_id": "chapter_001",
+    "scene_id": "scene_002",
+    "scene_number": 2,
+    "scene_label": "capitolo_e_ambiente_esterno",
+    "text_content": "Capitolo Primo: Il Ronzio della Statica. Anno Domini duemilaquarantadue. Distretto Superiore di Kamigyo, Neo-Kyoto. La pioggia non era un evento; era l'atmosfera. Un velo costante e acido che scivolava lungo i fianchi dei grattacieli-aghi, raccogliendo l'inquinamento dei livelli superiori per depositarlo come una patina untuosa sulle strade quaranta piani pi\u00f9 in basso. Da lass\u00f9, dall'appartamento quarantadue B del Complesso Aethelred, Kaelen osservava il mondo annegare in una luce al neon diffusa.",
+    "qwen3_instruct": "Warm Italian male voice, professional audiobook narrator. Very slow and deliberate pace, articulate the chapter title with authority. Then transition to a slow, deliberate descriptive pace, emphasizing the oppressive, metallic atmosphere of the city below, with Kaelen's detached observation.",
+    "fish_annotated_text": null,
+    "tts_backend": "qwen3-tts-1.7b",
+    "primary_emotion": "speranza",
+    "word_count": 71,
+    "voice_direction": {
+      "emotion_description": "Tono narrativo standard",
+      "pace_factor": 1.0,
+      "pitch_shift": 0,
+      "energy": 0.6,
+      "recommended_silence_before_ms": 500,
+      "recommended_silence_after_ms": 1000
+    },
+    "audio_layers": {
+      "music": {
+        "prompt_for_musicgen": "Texture ambientale discreta, sottofondo narrativo neutro",
+        "intensity_curve": [
+          0.3,
+          0.5,
+          0.4
+        ],
+        "ducking_db": -15
+      },
+      "ambient": {
+        "soundscape_tag": "speranza_room_tone",
+        "volume_db": -25,
+        "fade_in_ms": 2000,
+        "fade_out_ms": 3000
+      },
+      "spot_effects": []
+    },
+    "timing_estimate": {
+      "estimated_duration_seconds": 28.4,
+      "words_per_minute": 150
+    },
+    "processing_timestamp": "2026-03-06T16:20:10.782312"
+  }
+]

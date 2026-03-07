@@ -1,62 +1,53 @@
-IDENTITY
-→ name: DIAS
-→ description: Distributed Immersive Audiobook System — produzione automatizzata di audiolibri cinematografici con AI locale
-→ repo: S3ph1r/dias (da creare)
-→ stack: Python, Redis, Google Gemini API (Flash-Lite), Qwen3-TTS 1.7B, AudioCraft MusicGen, FFmpeg 7.0+
-→ blueprint: docs/blueprint.md
+IDENTITY:
+  name: DIAS
+  description: Distributed Immersive Audiobook System. Genera audiolibri cinematici segmentando il testo in blocchi emotivi e delegando il TTS all'orchestrazione locale ARIA.
+  repo: locale
+  stack: Python, Redis, Google Gemini, ARIA (Qwen3TTS, Fish, MusicGen), FFmpeg
+  blueprint: docs/blueprint.md
 
-ARCHITECTURE
-→ overview: Pipeline sequenziale a 7 stadi. Ogni stadio consuma da una coda Redis, processa atomicamente, e produce output nella coda successiva. Un solo modello AI in VRAM alla volta.
-→ structure:
-  src/common/                — config, redis client, logging, base classes
-  src/stage_a_ingestion/     — TextIngester (CPU — PDF/EPUB → blocchi testo)
-  src/stage_b_macro_analysis/ — MacroAnalyzer (API — analisi emotiva)
-  src/stage_c_scene_director/ — SceneDirector (API — audio script per scena)
-  src/stage_d_voice_gen/     — VoiceGenerator (GPU — TTS con voice cloning)
-  src/stage_e_music_gen/     — MusicGenerator (GPU — colonna sonora adattiva)
-  src/stage_f_mixing/        — AudioMixer (CPU — FFmpeg filter_complex)
-  src/stage_g_mastering/     — MasteringEngine (CPU — loudness + metadata)
-  config/                    — configurazione yaml
-  schemas/                   — JSON schemas per validazione inter-stadio
-  docker/                    — Dockerfile per Brain e GPU Worker
-  tests/                     — test per componente
+ARCHITECTURE:
+  overview: Pipeline a 7 stadi (A-G) strettamente sequenziale. DIAS funge da "Regista" (segmentazione, istruzioni stilistiche agnostiche per TTS, fonetica) e delega la generazione effettiva ad ARIA su GPU remota via code Redis.
+  structure:
+    src/: Codice sorgente (stages, common library)
+    docs/: Documentazione e blueprint
+    data/: Storage dati diviso per stage (input, output, final)
+    scripts/: Utility di scaffolding e batch
 
-INFRASTRUCTURE
-→ containers:
-  CT120 (192.168.1.120) — Brain: Redis + stadi CPU (A, B, C, F, G) — 4096MB, 4 CPU, 30GB — Debian 12.12 — DEPLOYED
-→ external:
-  GPU Worker — PC gaming Win11 sulla stessa rete — RTX 5060 Ti 16GB VRAM, 32GB RAM — stadi GPU (D, E) — on-demand
-→ storage:
-  NFS share tra Brain e GPU Worker per audio assets
-  Path convention: /storage/audio/{voice|music|output}/{book_id}/
+INFRASTRUCTURE:
+  nodes:
+INFRASTRUCTURE:
+  nodes:
+    - Brain Node: Esecuzione logica DIAS e Orchestrazione (Configurabile)
+    - Infrastructure Node: Redis Server (Code, Registri, Persistence)
+    - Worker Node: Consumer TTS/MusicGen su GPU (ARIA)
+  storage: /home/Projects/NH-Mini/sviluppi/dias/data/
 
-COMPONENTS
-→ A: TextIngester     — CPU   — Estrazione testo e split in blocchi (Marker/PyMuPDF)
-→ B: MacroAnalyzer    — API   — Analisi emotiva dei blocchi (Gemini Flash-Lite, max 1 call/30s)
-→ C: SceneDirector    — API   — Segmentazione in scene + audio script (Gemini Flash-Lite)
-→ D: VoiceGenerator   — GPU   — TTS con direzione emotiva (Qwen3-TTS 1.7B, ~7GB VRAM)
-→ E: MusicGenerator   — GPU   — Colonna sonora per scena (AudioCraft MusicGen Small, ~4GB VRAM)
-→ F: AudioMixer       — CPU   — Mix voice + music + SFX con ducking (FFmpeg)
-→ G: MasteringEngine   — CPU   — Concatenazione, loudness -16 LUFS, MP3 320kbps + metadata
+COMPONENTS:
+  list:
+    - TextIngester (A): Raggruppamento PDF in chunk
+    - SemanticAnalyzer (B): Profilazione EMOTIVA macro 
+    - SceneDirector (C): Regia fine, normalizzazione e istruzioni Qwen3
+    - VoiceGenProxy (D): Costruttore payload agnostico per ARIA
+    - MusicMixer (E-F-G): Generazione colonna sonora e mix stereo FFmpeg
 
-KNOWLEDGE INDEX
-→ (vuoto — verrà popolato durante lo sviluppo)
+KNOWLEDGE_INDEX:
+  entries:
+    - docs/blueprint.md
+    - docs/dias-component-inventory.md
 
-CREDENTIALS
-→ google.api_key — Chiave API per Gemini Flash-Lite (analisi narrativa stadi B e C)
-→ (via credential_manager.py di NH-Mini — mai hardcoded)
+CREDENTIALS:
+  list:
+    - google.api_key (Gemini API access)
 
-ERROR HANDLING
-→ Gemini rate limit (429): backoff 120s, non consumare il messaggio dalla coda
-→ GPU OOM: salvare checkpoint, split chunk più piccoli, riaccodare
-→ Redis down: log errore, no crash, attendere reconnect
-→ Storage pieno: notifica utente, pausa pipeline
-→ Crash generico: checkpoint in Redis, ripresa da ultimo stadio completato
+ERROR_HANDLING:
+  patterns:
+    - "429 Too Many Requests: Lockout di 24 ore (GeminiRateLimiter) e pause"
+    - "Coda Stage D ferma: Controllare ARIA su Windows se processa la task TTS"
 
-DEVELOPMENT PHASE
-→ phase: m2-common-complete
-→ priorities: common (done) → stadi in ordine A→G (next: M3 Ingestion)
-→ constraints: GPU Worker non sempre disponibile (PC gaming), API rate limited (1/30s)
+DEVELOPMENT_PHASE:
+  phase: development
+  priorities: Completare la stabilità degli Stage C e D per 32 chunk continui, per poi avviare i generatori musicali
+  constraints: Limits della quota giornaliera (Free Tier: 20 chiamate/giorno) e disponibilità hardware della GPU esterna.
 
-OVERRIDES
-→ (nessuna deroga — si seguono tutte le regole del framework)
+OVERRIDES:
+  list: []

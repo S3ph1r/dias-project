@@ -1,0 +1,7 @@
+{
+  "contents": [{
+    "parts": [{
+      "text": "Analizza semanticamente questo testo e restituisci JSON:\n\n\"Il detective Mario Rossi indaga sul caso. Maria Bianchi è la testimone principale. Il delitto è avvenuto in via Roma a Milano.\"\n\nRestituisci SOLO JSON con:\n{\n  \"entities\": [\n    {\"text\": \"Mario Rossi\", \"type\": \"PERSON\", \"confidence\": 0.9},\n    {\"text\": \"Maria Bianchi\", \"type\": \"PERSON\", \"confidence\": 0.9},\n    {\"text\": \"via Roma\", \"type\": \"LOCATION\", \"confidence\": 0.8},\n    {\"text\": \"Milano\", \"type\": \"LOCATION\", \"confidence\": 0.9}\n  ],\n  \"relations\": [\n    {\"subject\": \"Mario Rossi\", \"predicate\": \"investiga\", \"object\": \"caso\"},\n    {\"subject\": \"Maria Bianchi\", \"predicate\": \"è testimone\", \"object\": \"caso\"}\n  ],\n  \"concepts\": [\"indagine\", \"delitto\", \"testimonianza\"]\n}"
+    }]
+  }]
+}
