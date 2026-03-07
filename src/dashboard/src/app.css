@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+:root {
+  --dias-primary: #0ea5e9;
+  --dias-secondary: #6366f1;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100 min-h-screen;
+  font-family: 'Inter', sans-serif;
+}

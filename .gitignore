@@ -45,3 +45,12 @@ voices/
 # Temp
 *.tmp
 *.bak
+
+# Node.js & SvelteKit (Added for Dashboard)
+node_modules/
+src/dashboard/node_modules/
+src/dashboard/.svelte-kit/
+src/dashboard/build/
+src/dashboard/dist/
+.env.*
+!.env.template
