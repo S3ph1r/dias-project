@@ -1,16 +1,26 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
-  import { fetchProjectDetails, pushSceneToStageD, type Project, type ProjectStage } from '../../../lib/api';
+  import { fetchProjectDetails, pushSceneToStageD, fetchVoices, type Project, type ProjectStage } from '../../../lib/api';
 
   let project = $state<Project | null>(null);
   let loading = $state(true);
   let error = $state<string | null>(null);
   let processingScene = $state<string | null>(null);
+  let voices = $state<string[]>([]);
+  let selectedVoice = $state<string | null>(null);
 
   const loadData = async () => {
     try {
-      project = await fetchProjectDetails(page.params.id);
+      const [details, voiceData] = await Promise.all([
+        fetchProjectDetails(page.params.id),
+        fetchVoices()
+      ]);
+      project = details;
+      voices = voiceData.voices;
+      if (voices.length > 0 && !selectedVoice) {
+        selectedVoice = voices[0];
+      }
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -23,8 +33,8 @@
   const handlePushScene = async (projectId: string, sceneFile: string) => {
     processingScene = sceneFile;
     try {
-      await pushSceneToStageD(projectId, sceneFile);
-      alert(`Scene ${sceneFile} pushed to Qwen3TTS successfully!`);
+      await pushSceneToStageD(projectId, sceneFile, selectedVoice || undefined);
+      alert(`Scene ${sceneFile} pushed with voice ${selectedVoice || 'default'} successfully!`);
       // Optional: Refresh data after push
       await loadData();
     } catch (e) {
@@ -86,8 +96,26 @@
             </span>
           </div>
 
-          <div class="flex-1 overflow-hidden">
-            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Produced Assets ({stage.files.length})</p>
+          <div class="flex-1 overflow-hidden space-y-4">
+            {#if stage.id === 'stage_d'}
+              <div class="space-y-3">
+                <p class="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Select Voice Override</p>
+                <div class="flex flex-wrap gap-2">
+                  {#each voices as voice}
+                    <button 
+                      onclick={() => selectedVoice = voice}
+                      class="px-4 py-2 rounded-xl text-xs font-bold transition-all border {selectedVoice === voice ? 'bg-sky-500 text-white border-sky-400 shadow-lg shadow-sky-500/20 scale-105' : 'bg-slate-950/50 text-slate-400 border-slate-800 hover:border-slate-700'}"
+                    >
+                      {voice}
+                    </button>
+                  {:else}
+                    <p class="text-[10px] text-slate-600 italic">No voices detected from ARIA nodes.</p>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest">Produced Assets ({stage.files.length})</p>
             <div class="max-h-[300px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
               {#each stage.files as file}
                 <div class="group flex items-center justify-between p-3 rounded-xl bg-slate-950/50 border border-slate-800 hover:border-slate-700 transition-all">

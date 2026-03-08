@@ -153,8 +153,11 @@ async def get_project_status(project_id: str) -> Dict[str, Any]:
 async def push_scene_to_stage_d(project_id: str, payload: Dict[str, str]):
     """
     Manually pushes a specific Stage C scene JSON to the Stage D queue.
+    Supports optional voice_override in the payload.
     """
     scene_file_name = payload.get("scene_file")
+    voice_override = payload.get("voice_override")
+    
     if not scene_file_name:
         raise HTTPException(status_code=400, detail="Missing scene_file")
     
@@ -166,17 +169,21 @@ async def push_scene_to_stage_d(project_id: str, payload: Dict[str, str]):
             scene_path = potential_paths[0]
         else:
             raise HTTPException(status_code=404, detail=f"Scene file {scene_file_name} not found")
-
+    
     try:
         with open(scene_path, 'r', encoding='utf-8') as f:
             scene_data = json.load(f)
+        
+        # Apply voice override if provided
+        if voice_override:
+            scene_data["voice_id"] = voice_override
         
         target_queue = "dias:queue:4:voice_gen"
         redis_client.lpush(target_queue, json.dumps(scene_data))
         
         return {
             "status": "success", 
-            "message": f"Scene {scene_file_name} pushed to {target_queue}"
+            "message": f"Scene {scene_file_name} pushed to {target_queue}" + (f" with voice {voice_override}" if voice_override else "")
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error pushing scene: {str(e)}")

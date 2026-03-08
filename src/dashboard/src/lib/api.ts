@@ -36,11 +36,14 @@ export async function fetchProjectDetails(id: string): Promise<Project> {
     return res.json();
 }
 
-export async function pushSceneToStageD(projectId: string, sceneFile: string): Promise<{ status: string; message: string }> {
+export async function pushSceneToStageD(projectId: string, sceneFile: string, voiceOverride?: string): Promise<{ status: string; message: string }> {
     const res = await fetch(`${API_BASE}/projects/${projectId}/push_scene`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scene_file: sceneFile })
+        body: JSON.stringify({
+            scene_file: sceneFile,
+            voice_override: voiceOverride
+        })
     });
     if (!res.ok) throw new Error('Failed to push scene to Stage D');
     return res.json();
@@ -52,7 +55,7 @@ export async function fetchAriaNodes(): Promise<AriaNode[]> {
     return res.json();
 }
 
-export async function fetchVoices() {
+export async function fetchVoices(): Promise<{ voices: string[] }> {
     const res = await fetch(`${API_BASE}/info/voices`);
     if (!res.ok) throw new Error('Failed to fetch voices');
     return res.json();
