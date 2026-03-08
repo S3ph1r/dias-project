@@ -90,8 +90,6 @@ class DiasRedis:
                 time.sleep(wait)
         raise last_error
 
-    # --- Health ---
-
     def health_check(self) -> bool:
         """Verifica che Redis risponda a PING."""
         try:
@@ -99,6 +97,24 @@ class DiasRedis:
         except Exception as e:
             self.logger.error(f"Redis health check failed: {e}")
             return False
+
+    # --- Generic Operations ---
+
+    def keys(self, pattern: str) -> list:
+        """Ritorna le chiavi che corrispondono al pattern."""
+        return self._retry(self._client.keys, pattern)
+
+    def get(self, key: str) -> Optional[str]:
+        """Recupera il valore di una chiave."""
+        return self._retry(self._client.get, key)
+
+    def set(self, key: str, value: str, ex: Optional[int] = None, nx: bool = False) -> bool:
+        """Imposta il valore di una chiave."""
+        return self._retry(self._client.set, key, value, ex=ex, nx=nx)
+
+    def delete(self, *keys: str) -> int:
+        """Elimina una o più chiavi."""
+        return self._retry(self._client.delete, *keys)
 
     # --- Queue Operations ---
 
