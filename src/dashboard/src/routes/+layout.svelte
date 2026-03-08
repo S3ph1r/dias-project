@@ -1,6 +1,28 @@
 <script>
+  import { onMount } from 'svelte';
+  import { fetchQuota } from '$lib/api';
   import "../app.css";
+  
   let { children } = $props();
+  let quota = $state({ usage: 0, limit: 20 });
+  
+  onMount(async () => {
+    try {
+      const data = await fetchQuota();
+      quota = data;
+    } catch (e) {
+      console.error("Failed to fetch quota", e);
+    }
+    
+    // Refresh quota every 30s
+    const interval = setInterval(async () => {
+      try {
+        quota = await fetchQuota();
+      } catch (e) {}
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  });
 </script>
 
 <div class="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
@@ -24,7 +46,21 @@
       </a>
     </nav>
     
-    <div class="p-4 border-t border-slate-800">
+    <div class="p-4 border-t border-slate-800 space-y-4">
+      <!-- Gemini Quota -->
+      <div class="px-4 py-3 rounded-xl bg-slate-900/50 border border-slate-800 space-y-2">
+        <div class="flex justify-between items-center">
+            <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Gemini Quota</span>
+            <span class="text-[10px] font-black {quota.usage >= quota.limit ? 'text-rose-500' : 'text-sky-400'}">{quota.usage}/{quota.limit}</span>
+        </div>
+        <div class="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+            <div 
+                class="h-full {quota.usage >= quota.limit ? 'bg-rose-500' : 'bg-sky-500'} transition-all duration-500" 
+                style="width: {Math.min(100, (quota.usage / quota.limit) * 100)}%"
+            ></div>
+        </div>
+      </div>
+
       <div class="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-800/30 border border-slate-800">
         <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
         <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">System Online</span>

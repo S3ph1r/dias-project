@@ -31,6 +31,7 @@ from src.common.redis_client import DiasRedis
 from src.common.persistence import DiasPersistence
 from src.stages.gemini_rate_limiter import gemini_rate_limiter
 from src.stages.mock_gemini_client import MockGeminiClient
+from src.common.quota_manager import get_quota_manager
 import logging
 
 
@@ -162,6 +163,12 @@ Rispondi ESCLUSIVAMENTE con un JSON che sia un ARRAY di oggetti. Formato esatto 
 
         for attempt in range(max_retries):
             try:
+                # Gestione Quota Giornaliera
+                quota_manager = get_quota_manager()
+                if not quota_manager.is_available():
+                    self.logger.warning("⚠️ Quota API Gemini esaurita per oggi (Stage C).")
+                    raise RuntimeError("GEMINI_QUOTA_EXHAUSTED")
+
                 # Applica pacing globale (30s)
                 gemini_rate_limiter.wait_for_slot()
                 
@@ -202,6 +209,9 @@ Rispondi ESCLUSIVAMENTE con un JSON che sia un ARRAY di oggetti. Formato esatto 
                     elif "qwen3_instruct" not in scene:
                         # Fallback se non ha seguito la formattazione esattamente
                         scene["qwen3_instruct"] = f"Tone: Neutral. Rhythm: Moderate. Attitude: Detached."
+
+                # Incrementa quota dopo successo
+                quota_manager.increment()
 
                 self.logger.info(f"TextDirector Qwen3 OK | Generate {len(scenes_list)} scene dinamiche strutturate")
                 return scenes_list

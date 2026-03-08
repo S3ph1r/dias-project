@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
-  import { fetchProjectDetails, pushSceneToStageD, fetchVoices, type Project, type ProjectStage } from '../../../lib/api';
+  import { fetchProjectDetails, pushSceneToStageD, fetchVoices, resumePipeline, resetStage, type Project, type ProjectStage } from '../../../lib/api';
 
   let project = $state<Project | null>(null);
   let loading = $state(true);
@@ -9,6 +9,8 @@
   let processingScene = $state<string | null>(null);
   let voices = $state<string[]>([]);
   let selectedVoice = $state<string | null>(null);
+  let resetting = $state<string | null>(null);
+  let resuming = $state(false);
 
   const loadData = async () => {
     try {
@@ -51,6 +53,36 @@
       default: return 'text-slate-500 bg-slate-500/10 border-slate-500/20';
     }
   };
+  const handleResumePipeline = async () => {
+    if (!project) return;
+    resuming = true;
+    try {
+      const result = await resumePipeline(project.id);
+      alert(`Pipeline resumed! Pushed ${result.pushed_count} missing tasks.`);
+      await loadData();
+    } catch (e) {
+      alert(`Error: ${(e as Error).message}`);
+    } finally {
+      resuming = false;
+    }
+  };
+
+  const handleResetStage = async (stageId: string) => {
+    if (!project) return;
+    const confirmed = confirm(`SEI SICURO? Questa azione cancellerà tutti i file dello ${stageId} per questo progetto e li rimetterà in coda dallo stage precedente.`);
+    if (!confirmed) return;
+
+    resetting = stageId;
+    try {
+      await resetStage(project.id, stageId);
+      alert(`Stage ${stageId} resettato con successo.`);
+      await loadData();
+    } catch (e) {
+      alert(`Error: ${(e as Error).message}`);
+    } finally {
+      resetting = null;
+    }
+  };
 </script>
 
 <div class="px-8 py-10 max-w-7xl mx-auto space-y-12">
@@ -66,9 +98,31 @@
         <h2 class="text-5xl font-black tracking-tighter uppercase italic">{project?.name || 'Project Detail'}</h2>
         <p class="text-slate-400 font-mono text-sm tracking-widest">{project?.id || '...'}</p>
       </div>
-      <div class="text-right space-y-2">
-        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest">Total Progress</p>
-        <p class="text-4xl font-black text-sky-400">{project?.overall_progress || 0}%</p>
+      <div class="flex items-center gap-6">
+        {#if project?.overall_progress < 100}
+            <button 
+                onclick={handleResumePipeline}
+                disabled={resuming}
+                class="px-6 py-3 rounded-2xl bg-sky-500 hover:bg-sky-400 text-white font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center gap-3 shadow-lg shadow-sky-500/20"
+            >
+                {#if resuming}
+                    <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Resuming...
+                {:else}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>
+                    Resume Pipeline
+                {/if}
+            </button>
+        {:else}
+            <div class="px-6 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-black uppercase tracking-widest flex items-center gap-3">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                Completed
+            </div>
+        {/if}
+        <div class="text-right space-y-2">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-widest">Total Progress</p>
+            <p class="text-4xl font-black text-sky-400">{project?.overall_progress || 0}%</p>
+        </div>
       </div>
     </div>
   </header>
@@ -91,9 +145,19 @@
               <p class="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">{stage.id}</p>
               <h3 class="text-2xl font-black text-white">{stage.name}</h3>
             </div>
-            <span class="px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider {getStatusColor(stage.status)}">
-              {stage.status.replace('_', ' ')}
-            </span>
+            <div class="flex items-center gap-3">
+               <button 
+                onclick={() => handleResetStage(stage.id)}
+                disabled={resetting === stage.id}
+                title="Reset/Retry this stage"
+                class="p-2 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20 transition-all active:scale-95 disabled:opacity-50"
+               >
+                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class={resetting === stage.id ? 'animate-spin' : ''}><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+               </button>
+               <span class="px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider {getStatusColor(stage.status)}">
+                 {stage.status.replace('_', ' ')}
+               </span>
+            </div>
           </div>
 
           <div class="flex-1 overflow-hidden space-y-4">

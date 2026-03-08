@@ -23,6 +23,7 @@ from src.common.models import IngestionBlock
 from src.common.persistence import DiasPersistence
 from src.stages.gemini_rate_limiter import gemini_rate_limiter
 from src.stages.mock_gemini_client import MockGeminiClient
+from src.common.quota_manager import get_quota_manager
 
 
 from src.common.models import (
@@ -198,6 +199,12 @@ class StageBSemanticAnalyzer:
         text = message['text']
         metadata = message.get('metadata', {})
         
+        # Gestione Quota Giornaliera
+        quota_manager = get_quota_manager()
+        if not quota_manager.is_available():
+            self.logger.warning("⚠️ Quota API Gemini esaurita per oggi. Sospensione stage.")
+            raise RuntimeError("GEMINI_QUOTA_EXHAUSTED")
+
         # Gestione Rate Limiting
         self.logger.info("Waiting for rate limit slot (Stage B)...")
         wait_time = gemini_rate_limiter.wait_for_slot()
@@ -219,6 +226,9 @@ class StageBSemanticAnalyzer:
             else:
                 # Mock client
                 response_text = self.gemini_client.generate_content(prompt, model=self.model_name)
+            
+            # Incrementa quota dopo successo
+            quota_manager.increment()
             
             # Parse risposta
             analysis_result = self._parse_gemini_response(response_text)

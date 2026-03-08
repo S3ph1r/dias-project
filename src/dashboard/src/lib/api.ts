@@ -60,3 +60,25 @@ export async function fetchVoices(): Promise<{ voices: string[] }> {
     if (!res.ok) throw new Error('Failed to fetch voices');
     return res.json();
 }
+
+export async function fetchQuota(): Promise<{ usage: number; limit: number; available: number; reset_at: string }> {
+    const res = await fetch(`${API_BASE}/info/quota`);
+    if (!res.ok) throw new Error('Failed to fetch quota info');
+    return res.json();
+}
+
+export async function resetStage(projectId: string, stageId: string): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/stages/${stageId}`, {
+        method: 'DELETE'
+    });
+    if (!res.ok) throw new Error('Failed to reset stage');
+    return res.json();
+}
+
+export async function resumePipeline(projectId: string): Promise<{ status: string; pushed_count: number }> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/resume`, {
+        method: 'POST'
+    });
+    if (!res.ok) throw new Error('Failed to resume pipeline');
+    return res.json();
+}

@@ -149,6 +149,162 @@ async def get_project_status(project_id: str) -> Dict[str, Any]:
         "stages": detailed_stages
     }
 
+@app.get("/info/quota")
+async def get_quota_info() -> Dict[str, Any]:
+    """Returns the current Gemini API quota usage."""
+    try:
+        from src.common.quota_manager import get_quota_manager
+        return get_quota_manager().get_quota_info()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/projects/{project_id}/stages/{stage_id}")
+async def reset_project_stage(project_id: str, stage_id: str):
+    """
+    Resets a specific stage for a project.
+    1. Deletes output files for that stage.
+    2. Re-enqueues input files for that stage (from previous stage outputs).
+    """
+    try:
+        # 1. Identify paths
+        # Map stage_id to directory name
+        stage_map = {
+            "stage_a": "stage_a",
+            "stage_b": "stage_b",
+            "stage_c": "stage_c",
+            "stage_d": "stage_d",
+            "stage_e": "stage_e",
+            "stage_f": "stage_f",
+            "stage_g": "stage_g"
+        }
+        
+        target_dir_name = stage_map.get(stage_id)
+        if not target_dir_name:
+            raise HTTPException(status_code=400, detail=f"Invalid stage_id: {stage_id}")
+            
+        # 2. Get project clean title (assuming project_id is already the clean title for now or lookup)
+        # For DIAS, project_id is usually the clean_title
+        clean_title = project_id
+        
+        output_path = BASE_DIR / "data" / target_dir_name / "output" / clean_title
+        
+        # 3. Delete files if directory exists
+        import shutil
+        if output_path.exists():
+            shutil.rmtree(output_path)
+            
+        # 4. Identify previous stage and re-enqueue
+        # This is a bit complex as it depends on the flow. 
+        # Simplified: if resetting Stage C, look at Stage B outputs.
+        
+        # Map of stage to its input queue
+        queue_map = {
+            "stage_a": "dias:queue:1:ingestion", # Stage A usually starts from raw PDF, handled separately
+            "stage_b": "dias:queue:2:macro_analysis",
+            "stage_c": "dias:queue:3:scene_director",
+            "stage_d": "dias:queue:4:voice_gen",
+            "stage_e": "dias:queue:5:music_gen",
+            "stage_f": "dias:queue:6:mixing",
+            "stage_g": "dias:queue:7:mastering"
+        }
+        
+        # Map of stage to its source directory (previous stage output)
+        source_map = {
+            "stage_b": "stage_a",
+            "stage_c": "stage_b",
+            "stage_d": "stage_c",
+            "stage_e": "stage_d",
+            "stage_f": "stage_e",
+            "stage_g": "stage_f"
+        }
+        
+        prev_stage = source_map.get(stage_id)
+        if prev_stage:
+            source_path = BASE_DIR / "data" / prev_stage / "output" / clean_title
+            if source_path.exists():
+                count = 0
+                for file in source_path.glob("*.json"):
+                    with open(file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    redis_client.lpush(queue_map[stage_id], json.dumps(data))
+                    count += 1
+                return {"status": "success", "message": f"Reset {stage_id} for {clean_title}. Re-enqueued {count} items."}
+        
+        return {"status": "success", "message": f"Reset {stage_id} for {clean_title}. Output cleared."}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/projects/{project_id}/resume")
+async def resume_project_pipeline(project_id: str):
+    """
+    Scans the entire pipeline for the project and enqueues missing tasks.
+    """
+    try:
+        clean_title = project_id
+        
+        # Define the chain of stages
+        stages = [
+            ("stage_a", "stage_b", "dias:queue:2:macro_analysis"),
+            ("stage_b", "stage_c", "dias:queue:3:scene_director"),
+            ("stage_c", "stage_d", "dias:queue:4:voice_gen"),
+            # Stage D, E, F, G...
+        ]
+        
+        total_pushed = 0
+        
+        for source_stage, target_stage, queue in stages:
+            source_dir = BASE_DIR / "data" / source_stage / "output" / clean_title
+            target_dir = BASE_DIR / "data" / target_stage / "output" / clean_title
+            
+            if not source_dir.exists():
+                continue
+                
+            # Scan source for files that don't have a corresponding target
+            for source_file in source_dir.glob("*.json"):
+                # logic for target file matching depends on stage naming conventions
+                # Stage A -> Stage B: usually 1-to-1 matching chunk names
+                # Stage B -> Stage C: usually 1-to-1
+                # Stage C -> Stage D: Stage C produces multiple scenes per chunk.
+                
+                target_filename = source_file.name
+                # If target doesn't exist, push to queue
+                # For Stage C->D, we check if the scene files exist.
+                # This logic might need refinement per stage.
+                
+                if target_stage == "stage_d":
+                    # Stage C output is a master scene file or individual scenes
+                    # Let's check for the individual scene files
+                    with open(source_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    
+                    if "scenes" in data:
+                        # This is a master file
+                        for scene in data["scenes"]:
+                            # Assume scene file naming convention: {chunk_label}-{scene_id}.json
+                            scene_id = scene.get("scene_id")
+                            chunk_label = data.get("chunk_label")
+                            scene_filename = f"{chunk_label}-{scene_id}.json"
+                            if not (target_dir / scene_filename).exists():
+                                redis_client.lpush(queue, json.dumps(scene))
+                                total_pushed += 1
+                    else:
+                        # Single scene file?
+                        if not (target_dir / target_filename).exists():
+                            redis_client.lpush(queue, json.dumps(data))
+                            total_pushed += 1
+                else:
+                    if not (target_dir / target_filename).exists():
+                        with open(source_file, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        redis_client.lpush(queue, json.dumps(data))
+                        total_pushed += 1
+                        
+        return {"status": "success", "pushed_count": total_pushed}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/projects/{project_id}/push_scene")
 async def push_scene_to_stage_d(project_id: str, payload: Dict[str, str]):
     """
@@ -161,9 +317,11 @@ async def push_scene_to_stage_d(project_id: str, payload: Dict[str, str]):
     if not scene_file_name:
         raise HTTPException(status_code=400, detail="Missing scene_file")
     
-    scene_path = BASE_DIR / "data" / "stage_c" / "output" / scene_file_name
+    # Use BASE_DIR for consistency
+    scene_path = BASE_DIR / "data" / "stage_c" / "output" / project_id / scene_file_name
+    
     if not scene_path.exists():
-        # Search in subfolders
+        # Fallback search if project_id folder doesn't exist or file is elsewhere
         potential_paths = list(BASE_DIR.glob(f"data/stage_c/output/**/{scene_file_name}"))
         if potential_paths:
             scene_path = potential_paths[0]
