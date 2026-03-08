@@ -243,13 +243,13 @@ async def check_resume_status(project_id: str):
     """
     try:
         clean_title = project_id
-        source_dir = BASE_DIR / "data" / "stage_c" / "output" / clean_title
+        source_dir = BASE_DIR / "data" / "stage_c" / "output"
         
         if not source_dir.exists():
             return {"status": "no_source", "voices": {}}
             
         voice_counts = {}
-        for source_file in source_dir.glob("*.json"):
+        for source_file in source_dir.glob(f"{clean_title}-*.json"):
             # Skip the master file if it exists, only scan individual scenes
             if source_file.name.endswith("-scenes.json"):
                 continue
@@ -286,15 +286,15 @@ async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = Non
         total_pushed = 0
         
         for source_stage, target_stage, queue in stages:
-            source_dir = BASE_DIR / "data" / source_stage / "output" / clean_title
-            target_dir = BASE_DIR / "data" / target_stage / "output" / clean_title
+            source_dir = BASE_DIR / "data" / source_stage / "output"
+            target_dir = BASE_DIR / "data" / target_stage / "output"
             
             if not source_dir.exists():
                 continue
                 
             # Scan source for files that don't have a corresponding target
             import re
-            for source_file in source_dir.glob("*.json"):
+            for source_file in source_dir.glob(f"{clean_title}-*.json"):
                 with open(source_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 
