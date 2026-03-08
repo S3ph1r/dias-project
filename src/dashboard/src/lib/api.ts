@@ -75,9 +75,19 @@ export async function resetStage(projectId: string, stageId: string): Promise<{ 
     return res.json();
 }
 
-export async function resumePipeline(projectId: string): Promise<{ status: string; pushed_count: number }> {
+export async function checkResume(projectId: string): Promise<{ status: string; voices: Record<string, number> }> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/resume/check`);
+    if (!res.ok) throw new Error('Failed to check resume status');
+    return res.json();
+}
+
+export async function resumePipeline(projectId: string, voiceOverride?: string): Promise<{ status: string; pushed_count: number }> {
     const res = await fetch(`${API_BASE}/projects/${projectId}/resume`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            voice_override: voiceOverride
+        })
     });
     if (!res.ok) throw new Error('Failed to resume pipeline');
     return res.json();

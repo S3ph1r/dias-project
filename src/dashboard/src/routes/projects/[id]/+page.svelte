@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
-  import { fetchProjectDetails, pushSceneToStageD, fetchVoices, resumePipeline, resetStage, type Project, type ProjectStage } from '../../../lib/api';
+  import { fetchProjectDetails, pushSceneToStageD, fetchVoices, resumePipeline, checkResume, resetStage, type Project, type ProjectStage } from '../../../lib/api';
 
   let project = $state<Project | null>(null);
   let loading = $state(true);
@@ -53,15 +53,29 @@
       default: return 'text-slate-500 bg-slate-500/10 border-slate-500/20';
     }
   };
+
   const handleResumePipeline = async () => {
     if (!project) return;
     resuming = true;
     try {
-      const result = await resumePipeline(project.id);
-      alert(`Pipeline resumed! Pushed ${result.pushed_count} missing tasks.`);
+      // 1. Pre-check: Detect existing voices
+      const check = await checkResume(project.id);
+      const existingVoices = Object.keys(check.voices).filter(v => v !== 'none' && v !== selectedVoice);
+      
+      if (existingVoices.length > 0) {
+        const counts = existingVoices.map(v => `${check.voices[v]} scene con voce '${v}'`).join(', ');
+        const confirmMsg = `ATTENZIONE: Sono state rilevate ${counts}.\n\nHai selezionato la voce '${selectedVoice || 'default'}'. Continuando, le scene mancanti verranno generate con questa nuova voce, creando un MIX di voci nel progetto.\n\nVuoi procedere comunque?`;
+        if (!confirm(confirmMsg)) {
+          return;
+        }
+      }
+
+      // 2. Execute Resume
+      const result = await resumePipeline(project.id, selectedVoice || undefined);
+      alert(`Pipeline ripresa! Inviati ${result.pushed_count} nuovi task ad ARIA.`);
       await loadData();
     } catch (e) {
-      alert(`Error: ${(e as Error).message}`);
+      alert(`Errore: ${(e as Error).message}`);
     } finally {
       resuming = false;
     }

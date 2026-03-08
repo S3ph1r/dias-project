@@ -235,8 +235,40 @@ async def reset_project_stage(project_id: str, stage_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/projects/{project_id}/resume/check")
+async def check_resume_status(project_id: str):
+    """
+    Scans Stage C outputs to detect which voices are already assigned.
+    Returns a summary of voice usage.
+    """
+    try:
+        clean_title = project_id
+        source_dir = BASE_DIR / "data" / "stage_c" / "output" / clean_title
+        
+        if not source_dir.exists():
+            return {"status": "no_source", "voices": {}}
+            
+        voice_counts = {}
+        for source_file in source_dir.glob("*.json"):
+            # Skip the master file if it exists, only scan individual scenes
+            if source_file.name.endswith("-scenes.json"):
+                continue
+                
+            try:
+                with open(source_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    
+                voice_id = data.get("voice_id") or "none"
+                voice_counts[voice_id] = voice_counts.get(voice_id, 0) + 1
+            except:
+                continue
+                
+        return {"status": "success", "voices": voice_counts}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/projects/{project_id}/resume")
-async def resume_project_pipeline(project_id: str):
+async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = None):
     """
     Scans the entire pipeline for the project and enqueues missing tasks.
     """
@@ -279,6 +311,11 @@ async def resume_project_pipeline(project_id: str):
                             # Usa glob per ignorare il timestamp di Stage D
                             search_pattern = f"{clean_title}-{chunk_label}-{scene_id}-*.json"
                             if not list(target_dir.glob(search_pattern)):
+                                # Apply voice override if provided
+                                voice_override = payload.get("voice_override") if payload else None
+                                if voice_override:
+                                    scene["voice_id"] = voice_override
+                                    
                                 redis_client.lpush(queue, json.dumps(scene))
                                 total_pushed += 1
                     else:
