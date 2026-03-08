@@ -261,44 +261,47 @@ async def resume_project_pipeline(project_id: str):
                 continue
                 
             # Scan source for files that don't have a corresponding target
+            import re
             for source_file in source_dir.glob("*.json"):
-                # logic for target file matching depends on stage naming conventions
-                # Stage A -> Stage B: usually 1-to-1 matching chunk names
-                # Stage B -> Stage C: usually 1-to-1
-                # Stage C -> Stage D: Stage C produces multiple scenes per chunk.
+                with open(source_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
                 
-                target_filename = source_file.name
-                # If target doesn't exist, push to queue
-                # For Stage C->D, we check if the scene files exist.
-                # This logic might need refinement per stage.
-                
+                # Extract chunk_label from filename if not reliably in data
+                match = re.search(r'(chunk-\d+)', source_file.name)
+                chunk_from_file = match.group(1) if match else None
+
                 if target_stage == "stage_d":
-                    # Stage C output is a master scene file or individual scenes
-                    # Let's check for the individual scene files
-                    with open(source_file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                    
                     if "scenes" in data:
                         # This is a master file
                         for scene in data["scenes"]:
-                            # Assume scene file naming convention: {chunk_label}-{scene_id}.json
                             scene_id = scene.get("scene_id")
-                            chunk_label = data.get("chunk_label")
-                            scene_filename = f"{chunk_label}-{scene_id}.json"
-                            if not (target_dir / scene_filename).exists():
+                            chunk_label = data.get("chunk_label") or chunk_from_file
+                            # Usa glob per ignorare il timestamp di Stage D
+                            search_pattern = f"{clean_title}-{chunk_label}-{scene_id}-*.json"
+                            if not list(target_dir.glob(search_pattern)):
                                 redis_client.lpush(queue, json.dumps(scene))
                                 total_pushed += 1
                     else:
-                        # Single scene file?
-                        if not (target_dir / target_filename).exists():
+                        # Skip single scene files to avoid double pushing
+                        pass
+                else:
+                    # Generic stage logic (e.g. Stage A -> B, Stage B -> C)
+                    chunk_label = data.get("chunk_label") or chunk_from_file
+                    if chunk_label:
+                        search_pattern = f"{clean_title}-{chunk_label}-*.json"
+                        if not list(target_dir.glob(search_pattern)):
+                            # Normalize text for Stage B
+                            if "text" not in data and "block_text" in data:
+                                data["text"] = data["block_text"]
+                            
+                            # Ensure envelope for Stage C
+                            if "book_id" not in data:
+                                data["book_id"] = clean_title
+                            if "block_id" not in data:
+                                data["block_id"] = chunk_label
+                                
                             redis_client.lpush(queue, json.dumps(data))
                             total_pushed += 1
-                else:
-                    if not (target_dir / target_filename).exists():
-                        with open(source_file, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                        redis_client.lpush(queue, json.dumps(data))
-                        total_pushed += 1
                         
         return {"status": "success", "pushed_count": total_pushed}
         
