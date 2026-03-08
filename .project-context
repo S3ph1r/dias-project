@@ -15,12 +15,11 @@ ARCHITECTURE:
 
 INFRASTRUCTURE:
   nodes:
-INFRASTRUCTURE:
-  nodes:
-    - Brain Node: Esecuzione logica DIAS e Orchestrazione (Configurabile)
-    - Infrastructure Node: Redis Server (Code, Registri, Persistence)
+    - Development Node: LXC 190 (NH-Mini) - Sviluppo e Doc
+    - Runtime Node: LXC 201 (DIAS RT) - Dashboard e API Hub
+    - Infrastructure Node: Redis Server (LXC 120 o locale)
     - Worker Node: Consumer TTS/MusicGen su GPU (ARIA)
-  storage: /home/Projects/NH-Mini/sviluppi/dias/data/
+  storage: /home/Projects/NH-Mini/sviluppi/dias/data/ (Sincronizzato via GitHub)
 
 COMPONENTS:
   list:

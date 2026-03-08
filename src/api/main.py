@@ -80,49 +80,100 @@ async def list_projects() -> List[Dict[str, Any]]:
     
     return projects
 
+# Stage Mapping for Dashboard
+STAGE_MAP = {
+    "stage_a": "Text Ingester",
+    "stage_b": "Macro Analyzer",
+    "stage_c": "Scene Direction",
+    "stage_d": "Voice Generation (Qwen3TTS)",
+    "stage_e": "Music Generation",
+    "stage_f": "Audio Mixing",
+    "stage_g": "Mastering Engine"
+}
+
 @app.get("/projects/{project_id}")
 async def get_project_status(project_id: str) -> Dict[str, Any]:
     """
     Detailed progress for a specific book.
-    Calculates progress by comparing file counts across stages A through G.
+    Calculates progress and returns file lists for each stage.
     """
     base_path = BASE_DIR / "data"
     stages = ["stage_a", "stage_b", "stage_c", "stage_d", "stage_e", "stage_f", "stage_g"]
     
-    stats = {}
+    detailed_stages = []
     total_chunks = 0
     
-    # 1. Count Stage A files to determine total chunks
+    # 1. Get total chunks from Stage A
     stage_a_dir = base_path / "stage_a" / "output"
-    stage_a_files = list(stage_a_dir.glob(f"{project_id}-chunk-*.json"))
+    stage_a_files = sorted([f.name for f in stage_a_dir.glob(f"{project_id}-chunk-*.json")])
     total_chunks = len(stage_a_files)
-    stats["stage_a"] = {"count": total_chunks, "status": "done" if total_chunks > 0 else "pending"}
+    
+    for stage_key in stages:
+        stage_dir = base_path / stage_key / "output"
+        files = []
+        if stage_dir.exists():
+            files = sorted([f.name for f in stage_dir.glob(f"{project_id}-*")])
+        
+        # Calculate status
+        status = "pending"
+        if len(files) > 0:
+            if stage_key == "stage_c":
+                status = "done" if any("scenes-" in f for f in files) else "in_progress"
+            elif len(files) >= total_chunks and total_chunks > 0:
+                status = "done"
+            else:
+                status = "in_progress"
 
-    # 2. Check other stages
-    # Note: Stage C produces multiple scenes per chunk, but here we count chunk-level completeness
-    for stage in stages[1:]:
-        stage_dir = base_path / stage / "output"
-        if not stage_dir.exists():
-            stats[stage] = {"count": 0, "status": "pending"}
-            continue
-            
-        found_files = list(stage_dir.glob(f"{project_id}-*"))
-        stats[stage] = {
-            "count": len(found_files),
-            "status": "in_progress" if 0 < len(found_files) < total_chunks else ("done" if len(found_files) >= total_chunks else "pending")
-        }
+        detailed_stages.append({
+            "id": stage_key,
+            "name": STAGE_MAP.get(stage_key, stage_key),
+            "status": status,
+            "files": files,
+            "is_placeholder": stage_key in ["stage_e", "stage_f", "stage_g"]
+        })
 
-    # 3. Calculate overall percentage (simplified)
-    # This is a guestimate: Weighting stages differently or counting actual scene completion would be better
-    completed_stages = sum(1 for s in stats.values() if s["status"] == "done")
-    progress_pct = (completed_stages / len(stages)) * 100
+    completed = sum(1 for s in detailed_stages if s["status"] == "done")
+    progress_pct = (completed / len(stages)) * 100
 
     return {
         "project_id": project_id,
+        "name": project_id.replace("-", " "),
         "total_chunks": total_chunks,
-        "stages": stats,
-        "overall_progress": round(progress_pct, 2)
+        "overall_progress": round(progress_pct, 2),
+        "stages": detailed_stages
     }
+
+@app.post("/projects/{project_id}/push_scene")
+async def push_scene_to_stage_d(project_id: str, payload: Dict[str, str]):
+    """
+    Manually pushes a specific Stage C scene JSON to the Stage D queue.
+    """
+    scene_file_name = payload.get("scene_file")
+    if not scene_file_name:
+        raise HTTPException(status_code=400, detail="Missing scene_file")
+    
+    scene_path = BASE_DIR / "data" / "stage_c" / "output" / scene_file_name
+    if not scene_path.exists():
+        # Search in subfolders
+        potential_paths = list(BASE_DIR.glob(f"data/stage_c/output/**/{scene_file_name}"))
+        if potential_paths:
+            scene_path = potential_paths[0]
+        else:
+            raise HTTPException(status_code=404, detail=f"Scene file {scene_file_name} not found")
+
+    try:
+        with open(scene_path, 'r', encoding='utf-8') as f:
+            scene_data = json.load(f)
+        
+        target_queue = "dias:queue:4:voice_gen"
+        redis_client.lpush(target_queue, json.dumps(scene_data))
+        
+        return {
+            "status": "success", 
+            "message": f"Scene {scene_file_name} pushed to {target_queue}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error pushing scene: {str(e)}")
 
 @app.get("/info/voices")
 async def get_available_voices() -> Dict[str, List[str]]:

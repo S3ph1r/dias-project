@@ -669,11 +669,14 @@ class SceneDirector(BaseStage):
                 self.logger.info(f"⏭️ Skipping Gemini: Master scene list già presente per {clean_title}-{chunk_label}")
                 scene_scripts = existing_scenes_master.get("scenes", [])
                 
-                # Invia ogni scena caricata alla coda successiva
+                # Invia ogni scena caricata alla coda successiva SOLO se auto_push è attivo
+                auto_push = os.getenv("AUTO_PUSH_TO_STAGE_D", "false").lower() == "true"
                 for scene_script in scene_scripts:
-                    if self.output_queue:
-                        self.logger.info(f"Producing (restored) scene {scene_script['scene_id']} to {self.output_queue}")
+                    if self.output_queue and auto_push:
+                        self.logger.info(f"Producing (restored) scene {scene_script['scene_id']} to {self.output_queue} (AUTO_PUSH=true)")
                         self.redis.push_to_queue(self.output_queue, scene_script)
+                    else:
+                        self.logger.info(f"⏸️ Manual Gate (Skip Logic): Scene {scene_script['scene_id']} not pushed (AUTO_PUSH=false)")
                 
                 return {
                     "stage": self.STAGE_NAME,
@@ -725,6 +728,9 @@ class SceneDirector(BaseStage):
                 f"{chunk_label}-scenes"
             )
 
+            # 3. Handle Output Pushing (Gatekeeper logic)
+            auto_push = os.getenv("AUTO_PUSH_TO_STAGE_D", "false").lower() == "true"
+            
             for scene_script in scene_scripts:
                 # Salva su disco con naming coerente: Titolo-chunk-000-scene-000
                 self.persistence.save_stage_output(
@@ -735,10 +741,13 @@ class SceneDirector(BaseStage):
                     scene_script['scene_id']
                 )
                 
-                # Invia alla coda successiva se definita
+                # Invia alla coda successiva SOLO se auto_push è attivo o se esplicitamente richiesto
                 if self.output_queue:
-                    self.logger.info(f"Producing scene {scene_script['scene_id']} to {self.output_queue}")
-                    self.redis.push_to_queue(self.output_queue, scene_script)
+                    if auto_push:
+                        self.logger.info(f"Producing scene {scene_script['scene_id']} to {self.output_queue} (AUTO_PUSH=true)")
+                        self.redis.push_to_queue(self.output_queue, scene_script)
+                    else:
+                        self.logger.info(f"⏸️ Manual Gate: Scene {scene_script['scene_id']} saved to disk but NOT pushed to queue (AUTO_PUSH=false)")
                 
             self.logger.info(f"✅ Stage C completato: {len(scene_scripts)} scene dinamiche generate")
             return {

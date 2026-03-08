@@ -2,7 +2,7 @@
 
 > **Contesto**: Distributed Immersive Audiobook System - Pipeline distribuita per trasformare libri in audiolibri immersivi
 >
-> **Stato**: Fase 2 completata (Common Library M2) - Prossimo: Stage A Text Ingester
+> **Stato**: Stage C in corso (25/32 chunk pronti) - Supporto Agnostico ARIA (Qwen3TTS attivo)
 
 ---
 
@@ -14,16 +14,16 @@
 - [x] **Fase 1**: Infrastructure Setup (LXC 120 deploy)
 - [x] **Fase 2**: Common Library M2 (config, Redis, models, BaseStage, logging, schemas, tests)
 - [x] **Fase 3**: Stage A - Text Ingester (✅ COMPLETATO - 32 blocchi)
-- [x] **Fase 4**: Stage B - Macro Analyzer (✅ COMPLETATO - 32 blocchi analizzati)
-- [/] **Fase 5**: Stage C - Scene Director (✅ 25/32 chunk pronti, 7 in attesa reset quota)
-- [x] **Fase 6**: Stage D - Voice Generator (✅ E2E validato via ARIA Proxy)
+- [x] **Fase 4**: Stage B - Macro Analyzer (✅ COMPLETATO - 32 blocchi)
+- [/] **Fase 5**: Stage C - Scene Director (✅ 25/32 chunk pronti, 7 in attesa reset quota Gemini)
+- [x] **Fase 6**: Stage D - Voice Generator (✅ E2E validato via ARIA Proxy - Qwen3TTS attivo)
 
 ### 🚀 PROSSIMI STEP
-- [ ] Completamento Stage C (Refresh qualità + 7 chunk mancanti)
-- [ ] Batch Stage D (Generazione audio massiva)
-- [ ] **Fase 7**: Stage E - Music Generator
-- [ ] **Fase 8**: Stage F - Audio Mixer
-- [ ] **Fase 9**: Stage G - Mastering Engine
+- [ ] Completamento Stage C (7 chunk mancanti - Reset Quota Gemini)
+- [ ] Batch Stage D (Generazione audio massiva su PC Gaming con Qwen3)
+- [ ] **Fase 7**: Stage E - Music Generator (AudioCraft MusicGen)
+- [ ] **Fase 8**: Stage F - Audio Mixer (FFmpeg)
+- [ ] **Fase 9**: Stage G - Mastering Engine (MP3 320kbps)
 
 ---
 
@@ -147,9 +147,9 @@ schemas/scene_script.json             ← DA AGGIORNARE prima di sviluppare (ved
 - [ ] Music prompt generation  
 - [ ] SFX identification
 - [ ] Scene boundary validation
-- [x] **TextDirector sub-stage**: chiamata Gemini API per annotare il testo con tag Fish S1-mini ufficiali e **Punteggiatura Drammatica**.
+- [x] **TextDirector sub-stage**: chiamata Gemini API per annotazioni agnostiche o specifiche (es. `qwen3_instruct`).
 - [x] **Ottimizzazione Ritmo**: Uso di `...` per micro-pause e `... .` per pause lunghe dopo i titoli.
-- [x] **Tag Validation**: Rimozione di tag non supportati o inventati (es: `[Instruction:]`).
+- [x] **Agnostic Design**: Supporto per switch rapido tra Qwen3TTS, Fish, ElevenLabs via payload.
 - [ ] Audio script quality tests
 - [ ] Parameter coherence tests
 
@@ -170,8 +170,8 @@ Output: JSON con un solo campo "annotated_text".
 - [ ] Parameter ranges validi
 - [ ] Timing estimates accurati
 - [ ] Narrative flow preservation
-- [ ] `orpheus_annotated_text` presente e valido per ogni scena
-- [ ] Tag Orpheus posizionati coerentemente con `primary_emotion` della scena
+- [ ] `qwen3_instruct` o `fish_annotated_text` presente e valido per ogni scena
+- [ ] Istruzioni di regia posizionate coerentemente con `primary_emotion` della scena
 
 **📅 Stima**: 2-3 settimane
 
@@ -213,7 +213,7 @@ tests/test_brain_coordinator.py
 
 ### 🔧 FASE 6: Stage D - Voice Generator ✅ COMPLETATO
 
-**🎯 Obiettivo**: Generazione voci con Fish S1-mini tramite ARIA Proxy (Windows Node)
+**🎯 Obiettivo**: Generazione voci tramite ARIA Proxy (Agnostic backend: Qwen3, Fish, ecc.)
 
 **📁 Struttura Progetto**:
 ```
@@ -222,41 +222,29 @@ src/common/persistence.py              ← salvataggio metadati scena
 ```
 
 **✅ Implementazione**:
-- [x] Integrazione ARIA Proxy via Redis
-- [x] Trasmissione SceneScript con `fish_annotated_text`
-- [x] Supporto a English Markers e Punteggiatura Drammatica per prosodia Fish
-- [x] Voice cloning narratore fedele (testo `voice_ref_text` allineato a `narratore.wav`)
-- [x] Gestione callback asincrona per URL audio
+- [x] Integrazione ARIA Proxy via Redis (Coda: `gpu:queue:tts:qwen3-tts-1.7b`)
+- [x] Trasmissione SceneScript con istruzioni specifiche per il backend attivo
+- [x] Supporto a Punteggiatura Drammatica per prosodia naturale
+- [x] Voice cloning narratore (configurato su ARIA)
+- [x] Gestione callback asincrona per URL audio o path locale
 - [x] Checkpointing in Redis e persistenza disco
 
 **✅ Criteri di Successo RAGGIUNTI**:
-- [x] Audio naturale in italiano con espressività Fish
+- [x] Audio naturale in italiano con espressività multi-modello
 - [x] Latenza produzione < 2x realtime
 - [x] Zero perdita dati su timeout (retry logic)
 
-**📋 Schema config.yaml per Fish S1-mini (via ARIA)**:
+**📋 Schema config.yaml per ARIA Proxy**:
 ```yaml
 models:
-  fish_s1_mini:
-    proxy_url: "http://windows-node:8080"
-    voice_default: "narratore"
-    temperature: 0.7
-    top_p: 0.7
+  qwen3_tts:
+    proxy_url: "http://windows-node:8000"
+    model_id: "qwen3-tts-1.7b"
 pipeline:
-  tts_backend: "fish-s1-mini"
-  default_voice_sample: "C:\\Users\\Roberto\\aria\\data\\voices\\narratore.wav"
+  tts_backend: "qwen3-tts-1.7b"
 ```
 
-**✅ Criteri di Successo**:
-- [ ] Audio naturale e coerente in italiano
-- [ ] Tag Orpheus (`<gasp>`, `<sigh>`, ecc.) prodotti correttamente nell'audio
-- [ ] Voice cloning fedele al campione fornito
-- [ ] VRAM server: < 8GB (con quantizzazione Q4_K_M)
-- [ ] Processing time < 2x realtime
-- [ ] Backend swap: aggiungere nuovo TTS richiede solo nuovo file `*_backend.py`
-- [ ] Fallback robusto: se `orpheus_annotated_text` mancante, usa `text_content`
-
-**📅 Stima**: 3-4 settimane
+**📅 Stima**: Completata fase di validazione E2E.
 
 ---
 

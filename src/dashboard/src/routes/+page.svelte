@@ -61,11 +61,13 @@
     </div>
     <div class="bg-slate-900/40 backdrop-blur-xl border border-slate-800 p-6 rounded-2xl space-y-4">
       <p class="text-slate-500 font-bold uppercase text-xs tracking-widest">Total Chunks</p>
-      <p class="text-4xl font-black text-white">128</p>
+      <p class="text-4xl font-black text-white">
+        {projects.reduce((acc, p) => acc + (p.total_chunks || 0), 0)}
+      </p>
     </div>
     <div class="bg-slate-900/40 backdrop-blur-xl border border-slate-800 p-6 rounded-2xl space-y-4">
-      <p class="text-slate-500 font-bold uppercase text-xs tracking-widest">Time Saved</p>
-      <p class="text-4xl font-black text-sky-400">42h</p>
+      <p class="text-slate-500 font-bold uppercase text-xs tracking-widest">Global Status</p>
+      <p class="text-4xl font-black text-sky-400">Stable</p>
     </div>
   </div>
 
@@ -103,10 +105,10 @@
               <div class="space-y-3">
                  <div class="flex justify-between text-xs font-bold uppercase tracking-wider text-slate-400">
                    <span>Pipeline Completion</span>
-                   <span class="text-sky-400">45%</span>
+                   <span class="text-sky-400">{project.overall_progress || 0}%</span>
                  </div>
                  <div class="h-3 bg-slate-800 rounded-full overflow-hidden p-[2px]">
-                   <div class="h-full bg-sky-500 rounded-full shadow-[0_0_12px_rgba(14,165,233,0.4)]" style="width: 45%;"></div>
+                   <div class="h-full bg-sky-500 rounded-full shadow-[0_0_12px_rgba(14,165,233,0.4)]" style="width: {project.overall_progress || 0}%;"></div>
                  </div>
               </div>
             </div>

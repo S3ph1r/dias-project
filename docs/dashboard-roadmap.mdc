@@ -1,0 +1,30 @@
+# 🛣️ Roadmap: DIAS Dashboard Development
+
+Questo documento serve come guida per la prossima sessione di lavoro.
+
+## 🏁 Punto di Partenza
+- **Host**: LXC 201 (192.168.1.201)
+- **Stato**: API Hub attivo sulla porta 8000 (`nohup python3 src/api/main.py &`).
+- **Dati**: Presenti in `/root/dias/data` (Stage A-D).
+
+## 🚀 Step 1: Frontend Scaffolding (SvelteKit)
+1. Inizializzazione SvelteKit su LXC 201:
+   ```bash
+   npx sv create frontend --template skeleton --types typescript
+   ```
+2. Setup Tailwind CSS per il design "Premium".
+3. Configurazione proxy o variabili d'ambiente per puntare all'API Hub (localhost:8000).
+
+## 🎨 Step 2: Implementazione UI
+1. **Layout**: Sidebar con lista progetti (da `/projects`).
+2. **Project View**: Dashboard con progresso degli stage (da `/projects/{id}`).
+3. **ARIA Monitor**: Pagina per vedere lo stato dei nodi (da `/aria/nodes`).
+4. **Player/Assets**: Visualizzazione e ascolto degli output (da `/projects/{id}/output`).
+
+## 🛠️ Step 3: Integrazione & Test
+1. Test di caricamento PDF dalla Dashboard.
+2. Monitoraggio della pipeline in tempo reale.
+3. Verifica skip system durante il resume dei lavori.
+
+---
+*Documento di passaggio di consegne per la Nuova Chat — 2026-03-07*
