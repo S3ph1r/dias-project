@@ -43,13 +43,17 @@ async def get_aria_nodes() -> List[Dict[str, Any]]:
     """
     try:
         nodes = []
-        keys = redis_client.keys("aria:global:node:*:status")
+        pattern = "aria:global:node:*:status"
+        keys = redis_client.keys(pattern)
+        print(f"DEBUG: Found {len(keys)} keys for pattern {pattern}: {keys}")
         for key in keys:
             data = redis_client.get(key)
+            print(f"DEBUG: Key {key} data: {data}")
             if data:
                 nodes.append(json.loads(data))
         return nodes
     except Exception as e:
+        print(f"DEBUG: Error fetching ARIA nodes: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching ARIA nodes: {str(e)}")
 
 @app.get("/projects")
