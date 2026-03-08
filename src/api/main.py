@@ -62,21 +62,27 @@ async def list_projects() -> List[Dict[str, Any]]:
         return []
     
     projects = []
-    # Simple logic: each unique book title found in filenames
-    # Pattern: book_id-chunk_id-scene_id-timestamp.json
-    found_titles = set()
+    found_titles = {} # Map title -> {last_mod, count}
+    
     for file in projects_dir.glob("*.json"):
-        # Format: Cronache-del-Silicio-chunk-000-20260307_005036.json
         parts = file.stem.split("-chunk-")
         if len(parts) > 0:
             title = parts[0]
+            mtime = file.stat().st_mtime
             if title not in found_titles:
-                found_titles.add(title)
-                projects.append({
-                    "id": title,
-                    "name": title.replace("-", " "),
-                    "last_modified": datetime.datetime.fromtimestamp(file.stat().st_mtime).isoformat()
-                })
+                found_titles[title] = {"last_modified": mtime, "count": 1}
+            else:
+                found_titles[title]["count"] += 1
+                if mtime > found_titles[title]["last_modified"]:
+                    found_titles[title]["last_modified"] = mtime
+    
+    for title, info in found_titles.items():
+        projects.append({
+            "id": title,
+            "name": title.replace("-", " "),
+            "total_chunks": info["count"],
+            "last_modified": datetime.datetime.fromtimestamp(info["last_modified"]).isoformat()
+        })
     
     return projects
 
