@@ -13,6 +13,7 @@ from typing import Optional
 
 import yaml
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
 
 # --- Sub-models ---
@@ -168,6 +169,10 @@ def load_config(config_path: Optional[Path] = None) -> DiasConfig:
         return _config_instance
 
     path = config_path or _find_config_file()
+    
+    # Load environment variables from .env if it exists
+    load_dotenv(dotenv_path=path.parent.parent / ".env")
+    
     with open(path, "r") as f:
         raw = yaml.safe_load(f) or {}
 
