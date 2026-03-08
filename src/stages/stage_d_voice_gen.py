@@ -75,12 +75,17 @@ class StageDVoiceGeneratorProxy(BaseStage):
             
             callback_key = f"dias:callback:stage_d:{job_id}:{scene_id}"
             
+            # Genera un job_id univoco e in sequenza logica per la costruzione del file in ARIA
+            clean_title = message.get("clean_title") or "".join([c if c.isalnum() else "-" for c in book_id]).strip("-")
+            chunk_label = message.get("chunk_label") or "chunk-000"
+            unique_aria_job_id = f"{clean_title}-{chunk_label}-{scene_id}"
+
             # Istruzione Stilistica Dinamica (Qwen3-TTS)
             default_instruct = "Warm Italian male voice, professional audiobook narrator."
             instruct = message.get("qwen3_instruct") or default_instruct
             
             aria_task = {
-                "job_id": job_id,
+                "job_id": unique_aria_job_id,
                 "client_id": "dias_pipeline",
                 "model_type": "tts",
                 "model_id": "qwen3-tts-1.7b",
