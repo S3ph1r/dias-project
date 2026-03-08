@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/state';
   import { fetchProjectDetails, pushSceneToStageD, fetchVoices, resumePipeline, checkResume, resetStage, type Project, type ProjectStage } from '../../../lib/api';
 
@@ -11,8 +11,11 @@
   let selectedVoice = $state<string | null>(null);
   let resetting = $state<string | null>(null);
   let resuming = $state(false);
+  let autoRefreshEnabled = $state(true);
+  let refreshInterval: any;
 
-  const loadData = async () => {
+  const loadData = async (silent = false) => {
+    if (!silent) loading = true;
     try {
       const [details, voiceData] = await Promise.all([
         fetchProjectDetails(page.params.id),
@@ -26,19 +29,31 @@
     } catch (e) {
       error = (e as Error).message;
     } finally {
-      loading = false;
+      if (!silent) loading = false;
     }
   };
 
-  onMount(loadData);
+  onMount(() => {
+    loadData();
+    
+    // Auto-refresh every 10 seconds
+    refreshInterval = setInterval(() => {
+        if (autoRefreshEnabled && !loading && !resuming && !resetting) {
+            loadData(true);
+        }
+    }, 10000);
+
+    return () => {
+        if (refreshInterval) clearInterval(refreshInterval);
+    };
+  });
 
   const handlePushScene = async (projectId: string, sceneFile: string) => {
     processingScene = sceneFile;
     try {
       await pushSceneToStageD(projectId, sceneFile, selectedVoice || undefined);
       alert(`Scene ${sceneFile} pushed with voice ${selectedVoice || 'default'} successfully!`);
-      // Optional: Refresh data after push
-      await loadData();
+      await loadData(true);
     } catch (e) {
       alert(`Error: ${(e as Error).message}`);
     } finally {
@@ -58,7 +73,6 @@
     if (!project) return;
     resuming = true;
     try {
-      // 1. Pre-check: Detect existing voices
       const check = await checkResume(project.id);
       const existingVoices = Object.keys(check.voices).filter(v => v !== 'none' && v !== selectedVoice);
       
@@ -70,10 +84,9 @@
         }
       }
 
-      // 2. Execute Resume
       const result = await resumePipeline(project.id, selectedVoice || undefined);
       alert(`Pipeline ripresa! Inviati ${result.pushed_count} nuovi task ad ARIA.`);
-      await loadData();
+      await loadData(true);
     } catch (e) {
       alert(`Errore: ${(e as Error).message}`);
     } finally {
@@ -90,7 +103,7 @@
     try {
       await resetStage(project.id, stageId);
       alert(`Stage ${stageId} resettato con successo.`);
-      await loadData();
+      await loadData(true);
     } catch (e) {
       alert(`Error: ${(e as Error).message}`);
     } finally {
@@ -106,6 +119,18 @@
          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><path d="m15 18-6-6 6-6"/></svg>
        </a>
        <div class="h-px flex-1 bg-slate-800"></div>
+       {#if autoRefreshEnabled}
+         <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+            <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+            <span class="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Live Monitoring</span>
+         </div>
+       {/if}
+       <button 
+        onclick={() => autoRefreshEnabled = !autoRefreshEnabled}
+        class="text-[10px] font-bold uppercase tracking-widest {autoRefreshEnabled ? 'text-slate-400' : 'text-slate-600'} hover:text-white transition-colors"
+       >
+         {autoRefreshEnabled ? 'Disable Auto-Refresh' : 'Enable Auto-Refresh'}
+       </button>
     </div>
     <div class="flex justify-between items-end">
       <div class="space-y-1">
@@ -113,7 +138,7 @@
         <p class="text-slate-400 font-mono text-sm tracking-widest">{project?.id || '...'}</p>
       </div>
       <div class="flex items-center gap-6">
-        {#if project?.overall_progress < 100}
+        {#if project && project.overall_progress < 100}
             <button 
                 onclick={handleResumePipeline}
                 disabled={resuming}
@@ -127,7 +152,7 @@
                     Resume Pipeline
                 {/if}
             </button>
-        {:else}
+        {:else if project}
             <div class="px-6 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-black uppercase tracking-widest flex items-center gap-3">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 Completed
