@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 # --- Sub-models ---
 
 class GoogleConfig(BaseModel):
-    model_flash_lite: str = "gemini-2.5-flash-lite-preview-06-17"
+    model_flash_lite: str = "gemini-flash-lite-latest"
     rate_limit_seconds: int = 30
     rate_limit_penalty_seconds: int = 120
     max_retries: int = 3
@@ -49,7 +49,12 @@ class RedisConfig(BaseModel):
 
 
 class QueuesConfig(BaseModel):
+    # Primary DIAS Pipeline Queues (Standardized)
     ingestion: str = "dias:queue:1:ingestion"
+    semantic: str = "dias:queue:2:semantic"
+    voice: str = "dias:queue:4:voice"
+    
+    # Legacy/Extended Pipeline Stages
     macro_analysis: str = "dias:queue:2:macro_analysis"
     scene_director: str = "dias:queue:3:scene_director"
     voice_gen: str = "dias:queue:4:voice_gen"

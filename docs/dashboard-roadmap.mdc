@@ -8,23 +8,21 @@ Questo documento serve come guida per la prossima sessione di lavoro.
 - **Dati**: Presenti in `/root/dias/data` (Stage A-D).
 
 ## 🚀 Step 1: Frontend Scaffolding (SvelteKit)
-1. Inizializzazione SvelteKit su LXC 201:
-   ```bash
-   npx sv create frontend --template skeleton --types typescript
-   ```
-2. Setup Tailwind CSS per il design "Premium".
-3. Configurazione proxy o variabili d'ambiente per puntare all'API Hub (localhost:8000).
+1. ✅ Inizializzazione SvelteKit su LXC 201.
+2. ✅ Setup Vanilla CSS per il design "Premium" (Glassmorphism, Dark Mode).
+3. ✅ Configurazione proxy per API Hub (localhost:8000).
 
 ## 🎨 Step 2: Implementazione UI
-1. **Layout**: Sidebar con lista progetti (da `/projects`).
-2. **Project View**: Dashboard con progresso degli stage (da `/projects/{id}`).
-3. **ARIA Monitor**: Pagina per vedere lo stato dei nodi (da `/aria/nodes`).
-4. **Player/Assets**: Visualizzazione e ascolto degli output (da `/projects/{id}/output`).
+1. ✅ **Layout**: Sidebar con lista progetti e monitor Quota Gemini.
+2. ✅ **Project View**: Dashboard con progresso degli stage e asset prodotti.
+3. ✅ **ARIA Monitor**: Pagina per vedere lo stato dei nodi e delle voci disponibili.
+4. ✅ **Player/Assets**: Visualizzazione e gestione degli output.
 
-## 🛠️ Step 3: Integrazione & Test
-1. Test di caricamento PDF dalla Dashboard.
-2. Monitoraggio della pipeline in tempo reale.
-3. Verifica skip system durante il resume dei lavori.
+## 🛠️ Step 3: Advanced Controls & Quota (Completo)
+1. ✅ **Gemini Quota Manager**: Integrazione Redis per tracking soglia (20/giorno).
+2. ✅ **Global Resume**: Tasto per scansionare e ri-accodare task mancanti.
+3. ✅ **Stage Retry**: Sistema di reset granulare per singolo stage con warning.
+4. ✅ **Voice Override**: Selettore voci dinamico (da ARIA) per iniezione manuale in Stage D.
 
 ---
-*Documento di passaggio di consegne per la Nuova Chat — 2026-03-07*
+*Documento aggiornato — 2026-03-08*

@@ -72,6 +72,23 @@ class MockRedis:
         """Check if key exists"""
         return 1 if self.get(key) is not None else 0
     
+    def incr(self, key: str) -> int:
+        """Increment numeric key"""
+        val = self.get(key)
+        if val is None:
+            new_val = 1
+        else:
+            new_val = int(val) + 1
+        self.set(key, new_val)
+        return new_val
+
+    def expire(self, key: str, seconds: int) -> bool:
+        """Set key expiry"""
+        if key in self.data:
+            self.expiry[key] = time.time() + seconds
+            return True
+        return False
+    
     def lpush(self, name: str, *values) -> int:
         """Push values to the left of list"""
         for value in reversed(values):
@@ -133,6 +150,12 @@ db0:keys={len(self.data)},expires={len(self.expiry)},avg_ttl=0
     def close(self) -> None:
         """Close connection (mock)"""
         pass
+    
+    def eval(self, script: str, numkeys: int, *args) -> Any:
+        """Mock Redis EVAL command (DUMMY - always returns 0 to allow slot acquisition)"""
+        if self.logger:
+            self.logger.info("MockRedis EVAL called (simulating successful slot acquisition)")
+        return 0
     
     # --- Queue Operations (for DIAS compatibility) ---
     

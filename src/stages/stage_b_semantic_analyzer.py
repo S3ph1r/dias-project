@@ -1,7 +1,7 @@
 """
 Stage B - Semantic Analyzer
 Analizza i chunk di testo da Stage A per estrarre entità, relazioni e concetti chiave
-utilizzando Google Gemini 2.5 Flash API con rate limiting
+utilizzando Google Gemini Flash Lite API con rate limiting
 """
 import os
 import json
@@ -16,14 +16,13 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 load_dotenv()
 
-import google.genai as genai
-from pydantic import BaseModel, Field
+from src.stages.mock_gemini_client import MockGeminiClient
+from src.common.gateway_client import GatewayClient
+from src.common.base_stage import BaseStage
+from src.common.registry import ActiveTaskTracker
 from src.common.redis_client import DiasRedis
 from src.common.models import IngestionBlock
 from src.common.persistence import DiasPersistence
-from src.stages.gemini_rate_limiter import gemini_rate_limiter
-from src.stages.mock_gemini_client import MockGeminiClient
-from src.common.quota_manager import get_quota_manager
 
 
 from src.common.models import (
@@ -32,21 +31,33 @@ from src.common.models import (
     NarrativeMarker, 
     SemanticEntity, 
     SemanticRelation, 
-    SemanticConcept, 
-    PrimaryEmotion
+    SemanticConcept
 )
 
 
-class StageBSemanticAnalyzer:
+class StageBSemanticAnalyzer(BaseStage):
     """
     Stage B: Analizza semanticamente i chunk di testo da Stage A
-    Utilizza Google Gemini 2.5 Flash API con rate limiting
+    Utilizza ARIA Gateway v2.0 per accedere dei modelli Cloud (Gemini)
     """
     
-    def __init__(self, redis_client: Optional[DiasRedis] = None):
-        self.logger = logging.getLogger(__name__)
-        self.redis_client = redis_client or DiasRedis()
+    STAGE_NAME = "b"
+    
+    def __init__(self, redis_client: Optional[DiasRedis] = None, config=None):
+        # Load config to get standard queue names
+        from src.common.config import get_config
+        cfg = config or get_config()
+        
+        super().__init__(
+            stage_name="semantic_analyzer",
+            stage_number=2,
+            input_queue=cfg.queues.ingestion,
+            output_queue=cfg.queues.semantic,
+            config=cfg,
+            redis_client=redis_client
+        )
         self.persistence = DiasPersistence()
+        self.tracker = ActiveTaskTracker(self.redis, self.logger)
         
         # Check if mock services are enabled
         mock_services = os.getenv('MOCK_SERVICES', 'false').lower() == 'true'
@@ -54,25 +65,14 @@ class StageBSemanticAnalyzer:
         if mock_services:
             self.logger.info("🎭 Using Mock Gemini Client (MOCK_SERVICES=true)")
             self.gemini_client = MockGeminiClient(logger=self.logger)
-            self.model_name = "gemini-2.5-flash-mock"
+            self.model_name = "gemini-flash-latest-mock"
         else:
-            # Retrieve Google Gemini API key from environment
-            self.logger.info("🔑 Using Real Gemini API (MOCK_SERVICES=false)")
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key or api_key == "your-google-api-key-here":
-                raise ValueError(
-                    "Google Gemini API key not found in environment. "
-                    "Please set GOOGLE_API_KEY in your .env file. "
-                    "Get your API key from: https://makersuite.google.com/app/apikey"
-                )
-            
-            self.logger.info("✅ Successfully retrieved API key from environment")
-            
-            # Configure Gemini client with secure API key
-            self.gemini_client = genai.Client(api_key=api_key)
-            self.model_name = "gemini-2.5-flash"
+            self.logger.info("📡 Using ARIA Gateway v2.0 (MOCK_SERVICES=false)")
+            # No longer need local API key check here - ARIA handles it.
+            self.gemini_client = GatewayClient(redis_client=self.redis, client_id="dias")
+            self.model_name = self.config.google.model_flash_lite
         
-        self.logger.info(f"Stage B Semantic Analyzer inizializzato con modello {self.model_name}")
+        self.logger.info(f"Stage B Semantic Analyzer inizializzato con modello {self.model_name} via Gateway")
     
     def process(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -85,6 +85,7 @@ class StageBSemanticAnalyzer:
             Dict con risultato del processing
         """
         self.logger.info(f"=== Stage B Processing Started ===")
+        self.logger.info(f"Full message keys: {list(message.keys())}")
         self.logger.info(f"Block ID: {message.get('block_id')}")
         self.logger.info(f"Book ID: {message.get('book_id')}")
         self.logger.info(f"Text length: {len(message.get('text', ''))} characters")
@@ -96,14 +97,33 @@ class StageBSemanticAnalyzer:
             if not message.get('block_id') or not message.get('text'):
                 raise ValueError("block_id e text sono richiesti")
             
-            # --- SKIPPING LOGIC ---
-            # Recupera titoli e indici per naming coerente e check esistenza
-            book_metadata = message.get('book_metadata', {})
-            title = book_metadata.get('title', 'Unknown')
-            clean_title = "".join([c if c.isalnum() else "-" for c in title]).strip("-")
+            # Coherence: Use IDs directly from the message (already normalized by Stage A)
+            book_id = message.get('book_id')
+            block_id = message.get('block_id')
+            clean_title = message.get('clean_title') or self.persistence.normalize_id(book_id)
             block_index = message.get('block_index', 0)
-            chunk_label = f"chunk-{block_index:03d}"
+            chunk_label = message.get('chunk_label') or f"chunk-{block_index:03d}"
 
+            # Registry task ID for Stage B
+            registry_task_id = f"stage_b_{block_id}"
+
+            self.logger.info(f"Processing Stage B: Book {book_id}, Block {block_id}")
+
+            # 1. Registry Check (Idempotency)
+            if not self.tracker.is_task_ready_to_send(book_id, registry_task_id):
+                entry = self.tracker.get_entry(book_id, registry_task_id)
+                if entry and entry.status == "COMPLETED":
+                    self.logger.info(f"⏭️ Chunk {block_id} già completato nel registro. Salto.")
+                    # If already completed, we should return the original message or the stored result
+                    # For now, just return the message to allow downstream stages to proceed if they handle idempotency
+                    return message 
+                
+                self.logger.info(f"Chunk {block_id} già in corso (IN_FLIGHT).")
+                # If in-flight, we might want to wait or skip, depending on desired behavior.
+                # For now, we'll let it proceed, assuming the in-flight status is for another worker.
+                # A more robust solution might involve a lock or a wait.
+            
+            # --- SKIPPING LOGIC (Disk Check) ---
             # Controlla se l'analisi esiste già su disco
             existing_analysis = self.persistence.load_stage_output("b", clean_title, chunk_label)
             if existing_analysis:
@@ -111,6 +131,9 @@ class StageBSemanticAnalyzer:
                 # Re-iniettiamo in Redis per sicurezza nel caso lo Stage C ne abbia bisogno
                 self._save_analysis_from_dict(existing_analysis, message)
                 
+                # Mark as Completed in Registry if it was skipped due to disk presence
+                self.tracker.mark_as_completed(book_id, registry_task_id, "disk_cache")
+
                 return {
                     "status": "success",
                     "block_id": message['block_id'],
@@ -125,10 +148,18 @@ class StageBSemanticAnalyzer:
                 }
             # ----------------------
             
+            # Mark as In-Flight in Registry
+            self.tracker.mark_as_inflight(book_id, registry_task_id, f"global:callback:dias:job-{book_id}-{block_id}") # Callback logic is internal to GatewayClient now
+
             # Analizza semanticamente il testo
             self.logger.info("Starting semantic analysis...")
             semantic_analysis = self._analyze_semantics(message)
             
+            # QUALITY CHECK: Don't allow empty "skeleton" successes
+            if not semantic_analysis.entities and not semantic_analysis.relations and not semantic_analysis.concepts:
+                self.logger.error("Empty analysis received (0 entities, 0 relations, 0 concepts). Rejecting as failure.")
+                raise RuntimeError("EMPTY_ANALYSIS_REJECTED")
+
             self.logger.info(f"Semantic analysis completed: {len(semantic_analysis.entities)} entities, "
                            f"{len(semantic_analysis.relations)} relations, "
                            f"{len(semantic_analysis.concepts)} concepts")
@@ -152,22 +183,21 @@ class StageBSemanticAnalyzer:
             self.logger.info("Saving analysis to disk...")
             analysis_dict = semantic_analysis.model_dump()
             
-            # Recupera titoli e indici per naming coerente
-            book_metadata = message.get('book_metadata', {})
-            title = book_metadata.get('title', 'Unknown')
-            clean_title = "".join([c if c.isalnum() else "-" for c in title]).strip("-")
-            block_index = message.get('block_index', 0)
-            chunk_label = f"chunk-{block_index:03d}"
+            # Use pre-extracted coherence fields
+            # Salva checkpoint Stage B
+            output_file = self.persistence.save_stage_output(self.STAGE_NAME, analysis_dict, clean_title, chunk_label)
             
-            filepath = self.persistence.save_stage_output("b", analysis_dict, clean_title, chunk_label)
-            self.logger.info(f"Analysis saved to disk: {filepath}")
+            # Mark as Completed in Registry
+            self.tracker.mark_as_completed(book_id, registry_task_id, output_file)
+
+            self.logger.info(f"Analysis saved to disk: {output_file}")
             
             # Salva in Redis per Stage C passando i metadati originali
             self.logger.info("Saving analysis to Redis...")
             self._save_analysis(semantic_analysis, message)
             
             # Aggiungi info sul file salvato al risultato
-            result["file_path"] = filepath
+            result["file_path"] = str(output_file)
             
             self.logger.info(f"=== Stage B Processing Completed Successfully ===")
             self.logger.info(f"Analisi semantica completata per block {message['block_id']}: "
@@ -199,36 +229,52 @@ class StageBSemanticAnalyzer:
         text = message['text']
         metadata = message.get('metadata', {})
         
-        # Gestione Quota Giornaliera
-        quota_manager = get_quota_manager()
-        if not quota_manager.is_available():
-            self.logger.warning("⚠️ Quota API Gemini esaurita per oggi. Sospensione stage.")
-            raise RuntimeError("GEMINI_QUOTA_EXHAUSTED")
-
-        # Gestione Rate Limiting
-        self.logger.info("Waiting for rate limit slot (Stage B)...")
-        wait_time = gemini_rate_limiter.wait_for_slot()
-        if wait_time > 0:
-            self.logger.info(f"Rate limit: attesi {wait_time:.1f} secondi")
+        # Rate Limiting and Quota is now managed centrally by ARIA Gateway.
+        # Stages simply submit the task and wait for the slot/result.
             
         # Prompt per Gemini API
         prompt = self._create_semantic_analysis_prompt(text)
         
+        # 1. Deterministic Job ID Persistence
+        import hashlib
+        if not message.get('job_id'):
+            # Create a stable ID from core metadata to ensure it survives re-queuing
+            stable_id_str = f"{book_id}|{block_id}|stage_b"
+            job_hash = hashlib.sha256(stable_id_str.encode()).hexdigest()[:12]
+            message['job_id'] = f"job-{job_hash}"
+            self.logger.info(f"Persisting NEW stable job_id in message: {message['job_id']}")
+        else:
+            self.logger.info(f"Reusing EXISTING job_id from message: {message['job_id']}")
+        
+        job_id = message['job_id']
+
         try:
-            # Gestisci sia client reale che mock
-            if hasattr(self.gemini_client, 'models'):
-                # Client reale Google Gemini
-                response = self.gemini_client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt
+            # Gestisci client Gateway, reale o mock
+            if isinstance(self.gemini_client, GatewayClient):
+                # Client ARIA Gateway
+                generate_config = {}
+                if hasattr(self.config.google, 'response_mime_type'):
+                    generate_config["response_mime_type"] = self.config.google.response_mime_type
+                
+                # Format contents for Gateway (Gemini 2.x standard)
+                contents = [{"role": "user", "parts": [{"text": prompt}]}]
+                
+                response = self.gemini_client.generate_content(
+                    contents=contents,
+                    model_id=self.model_name,
+                    config=generate_config,
+                    job_id=job_id  # Pass the stable ID
                 )
-                response_text = response.text
+                
+                if response["status"] == "error":
+                    self.logger.error(f"Gateway Error: {response.get('error')}")
+                    raise RuntimeError(f"GATEWAY_ERROR: {response.get('error')}")
+                
+                response_text = response["output"].get("text", "")
+            
             else:
                 # Mock client
                 response_text = self.gemini_client.generate_content(prompt, model=self.model_name)
-            
-            # Incrementa quota dopo successo
-            quota_manager.increment()
             
             # Parse risposta
             analysis_result = self._parse_gemini_response(response_text)
@@ -268,19 +314,8 @@ class StageBSemanticAnalyzer:
             return analysis
             
         except Exception as e:
-            error_msg = str(e)
-            if "429" in error_msg or "exhausted" in error_msg.lower():
-                gemini_rate_limiter.report_429()
-                
             self.logger.error(f"Errore nell'analisi semantica per block {block_id}: {e}")
-            # Ritorna analisi vuota in caso di errore
-            return MacroAnalysisResult(
-                book_id=book_id,
-                block_id=block_id,
-                block_analysis=BlockAnalysis(
-                    valence=0.5, arousal=0.5, tension=0.5, primary_emotion='neutro'
-                )
-            )
+            raise
     
     def _create_semantic_analysis_prompt(self, text: str) -> str:
         """
@@ -289,15 +324,26 @@ class StageBSemanticAnalyzer:
         """
         return f"""
         Sei un analista narrativo e semantico esperto. Analizza il seguente testo (in Italiano) per estrarre:
-        1. Analisi Emotiva: valence, arousal, tension (0.0-1.0) e l'emozione primaria.
-        2. Marcatori Narrativi: eventi chiave e shift di mood.
-        3. Entità: persona, luogo, organizzazione, concetto, evento (con relativa emozione).
-        4. Relazioni tra entità.
-        5. Concetti chiave e loro definizioni.
-        
+        1. Analisi Emotiva: valence, arousal, tension (0.0-1.0) e l'emozione primaria del BLOCCO INTERO.
+        2. Marcatori Narrativi: punti di svolta e shift di mood SIGNIFICATIVI con la loro posizione relativa nel testo (0.0 = inizio, 1.0 = fine).
+        3. Entità: identifica SOLO i personaggi principali che compaiono (con relativa emozione predominante e stile di dialogo se parlano).
+        4. Relazioni tra personaggi.
+        5. Concetti chiave narrativi (non tecnici generici).
+
+        IMPORTANTE — Dialoghi:
+        Se il testo contiene dialogo diretto (frasi tra virgolette), imposta has_dialogue: true.
+        Nell'array entities, per ogni personaggio che parla, aggiungi:
+        - "speaking_style": una breve nota in INGLESE su COME parla quel personaggio
+          (es. "speaks with quiet authority and analytical precision", "bright curiosity, quick questions", "cynical and sharp, ends sentences with challenges")
+
+        IMPORTANTE — Emozione:
+        Non appiattire tutto a "neutro". Sii coraggioso nell'analisi emotiva.
+        Se il testo contiene tensione, paura, gioia improvvisa, dialogo conflittuale: dillo.
+        primary_emotion deve riflettere l'emozione DOMINANTE nel blocco, non la media neutra.
+
         Testo da analizzare:
         {text}
-        
+
         Rispondi ESCLUSIVAMENTE in formato JSON con questa struttura:
         {{
             "block_analysis": {{
@@ -306,23 +352,24 @@ class StageBSemanticAnalyzer:
                 "tension": 0.5,
                 "primary_emotion": "neutro|gioia|tristezza|rabbia|paura|tensione|curiosita|relax|melanconia|stupore|determinazione|ansia|nostalgia",
                 "secondary_emotion": "descrizione opzionale",
-                "setting": "luogo della scena",
+                "setting": "luogo fisico della scena",
                 "has_dialogue": false,
-                "audio_cues": ["lista", "di", "effetti", "sonori", "suggeriti"]
+                "audio_cues": ["lista", "di", "suoni", "ambientali", "concreti", "menzionati", "nel", "testo"]
             }},
             "narrative_markers": [
                 {{
                     "relative_position": 0.1,
-                    "event": "nome evento",
-                    "mood_shift": "descrizione cambio mood"
+                    "event": "nome evento concreto",
+                    "mood_shift": "da X a Y (es: da tensione tecnica a sollievo euforico)"
                 }}
             ],
             "entities": [
                 {{
                     "entity_id": "ent_001",
-                    "text": "testo dell'entità",
+                    "text": "nome del personaggio",
                     "entity_type": "persona|luogo|organizzazione|concetto|evento",
                     "emotional_tone": "neutro|gioia|tristezza|rabbia|paura|tensione|curiosita|relax",
+                    "speaking_style": "breve nota in inglese su come parla (se parla), altrimenti null",
                     "confidence": 0.9,
                     "metadata": {{}}
                 }}
@@ -339,18 +386,19 @@ class StageBSemanticAnalyzer:
             "concepts": [
                 {{
                     "concept_id": "conc_001",
-                    "concept": "nome concetto",
+                    "concept": "nome concetto narrativo",
                     "definition": "definizione in italiano",
                     "emotional_tone": "neutro|gioia|tristezza|rabbia|paura|tensione|curiosita|relax",
                     "confidence": 0.85
                 }}
             ]
         }}
-        
+
         REGOLE:
         - Usa solo le emozioni nell'enum fornito (in italiano).
-        - Sii conservatore nell'analisi emotiva.
+        - NON essere conservatore: se il testo è teso, dillo. Se c'è gioia improvvisa, dillo.
         - Le relazioni devono essere espresse in italiano.
+        - audio_cues devono riferirsi a suoni CONCRETI citati nel testo (es. "ronzio del Nexus", "sirena lontana", "pioggia sul vetro").
         """
     
     def _parse_gemini_response(self, response_text: str) -> Dict[str, Any]:
@@ -399,16 +447,10 @@ class StageBSemanticAnalyzer:
         except json.JSONDecodeError as e:
             self.logger.error(f"Errore nel parsing JSON da Gemini: {e}")
             self.logger.error(f"Risposta raw: {response_text[:500]}...")
-            return {
-                'entities': [],
-                'relations': [],
-                'concepts': [],
-                'narrative_markers': [],
-                'block_analysis': BlockAnalysis(valence=0.5, arousal=0.5, tension=0.5, primary_emotion='neutro'),
-                'confidence_score': 0.0
-            }
+            raise RuntimeError("GEMINI_JSON_PARSE_FAILED_NO_FALLBACK")
         except Exception as e:
             self.logger.error(f"Errore generico nel parsing della risposta Gemini: {e}")
+            raise
             return {
                 'entities': [],
                 'relations': [],
@@ -426,11 +468,14 @@ class StageBSemanticAnalyzer:
             # Converti a dict per salvataggio con conversione datetime
             analysis_dict = analysis.model_dump()
             
-            # Porta avanti i metadati per il naming coerente nello Stage C
+            # Salva nella coda per Stage C
             analysis_dict["clean_title"] = original_message.get("clean_title")
             analysis_dict["chunk_label"] = original_message.get("chunk_label")
             analysis_dict["book_metadata"] = original_message.get("book_metadata")
             analysis_dict["block_index"] = original_message.get("block_index")
+            analysis_dict["book_id"] = original_message.get("book_id")
+            analysis_dict["block_id"] = original_message.get("block_id")
+            analysis_dict["job_id"] = analysis.job_id
             
             # Converti datetime a stringa ISO per JSON serialization
             if 'processing_timestamp' in analysis_dict and analysis_dict['processing_timestamp']:
@@ -438,8 +483,8 @@ class StageBSemanticAnalyzer:
                     analysis_dict['processing_timestamp'] = analysis_dict['processing_timestamp'].isoformat()
             
             # Salva nella coda per Stage C
-            queue_name = "dias_stage_c_queue"
-            self.redis_client.push_to_queue(queue_name, analysis_dict)
+            queue_name = self.output_queue
+            self.redis.push_to_queue(queue_name, analysis_dict)
             
             self.logger.info(f"Analisi {analysis.job_id} salvata in Redis per Stage C")
             
@@ -456,10 +501,14 @@ class StageBSemanticAnalyzer:
             analysis_dict["chunk_label"] = original_message.get("chunk_label")
             analysis_dict["book_metadata"] = original_message.get("book_metadata")
             analysis_dict["block_index"] = original_message.get("block_index")
+            analysis_dict["book_id"] = original_message.get("book_id")
+            analysis_dict["block_id"] = original_message.get("block_id")
+            if "job_id" not in analysis_dict:
+                analysis_dict["job_id"] = original_message.get("job_id") or f"restored-{datetime.now().timestamp()}"
             
             # Salva nella coda per Stage C
-            queue_name = "dias_stage_c_queue"
-            self.redis_client.push_to_queue(queue_name, analysis_dict)
+            queue_name = self.output_queue
+            self.redis.push_to_queue(queue_name, analysis_dict)
             self.logger.info(f"Analisi ripristinata salvata in Redis per Stage C")
             
         except Exception as e:
@@ -470,3 +519,37 @@ class StageBSemanticAnalyzer:
         Ritorna stato corrente del rate limiter
         """
         return gemini_rate_limiter.get_status()
+def main():
+    """Main entry point per Stage B"""
+    import argparse
+    from src.common.config import get_config, load_config
+    from pathlib import Path
+    
+    parser = argparse.ArgumentParser(description="DIAS Stage B - Semantic Analyzer")
+    parser.add_argument("--config", help="Path to config file")
+    parser.add_argument("--mock", action="store_true", help="Use mock services")
+    
+    args = parser.parse_args()
+    
+    if args.mock:
+        os.environ["MOCK_SERVICES"] = "true"
+        
+    if args.config:
+        config = load_config(Path(args.config))
+    else:
+        config = get_config()
+    
+    # Setup logging
+    logger = logging.getLogger(__name__)
+    logger.info("🧠 Starting DIAS Stage B - Semantic Analyzer")
+    
+    try:
+        analyzer = StageBSemanticAnalyzer(config=config)
+        analyzer.run()
+    except Exception as e:
+        logger.error(f"Fatal error in Stage B: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

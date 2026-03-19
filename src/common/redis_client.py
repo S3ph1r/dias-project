@@ -116,11 +116,27 @@ class DiasRedis:
         """Elimina una o più chiavi."""
         return self._retry(self._client.delete, *keys)
 
+    def incr(self, key: str) -> int:
+        """Incrementa atomicamente una chiave numerica."""
+        return self._retry(self._client.incr, key)
+
+    def expire(self, key: str, seconds: int) -> bool:
+        """Imposta scadenza su una chiave."""
+        return self._retry(self._client.expire, key, seconds)
+
+    def eval(self, script: str, num_keys: int, *args) -> Any:
+        """Esegue uno script Lua (EVAL)."""
+        return self._retry(self._client.eval, script, num_keys, *args)
+
+    def llen(self, key: str) -> int:
+        """Ritorna la lunghezza di una lista."""
+        return self._retry(self._client.llen, key)
+
     # --- Queue Operations ---
 
     def push_to_queue(self, queue_name: str, message: dict) -> int:
         """
-        Inserisce un messaggio nella coda (LPUSH).
+        Inserisce un messaggio nella coda (LPUSH - in fondo).
         Il messaggio viene serializzato in JSON.
 
         Returns:
@@ -129,6 +145,16 @@ class DiasRedis:
         payload = json.dumps(message, ensure_ascii=False)
         result = self._retry(self._client.lpush, queue_name, payload)
         self.logger.debug(f"Pushed to {queue_name}, queue length: {result}")
+        return result
+
+    def push_to_head(self, queue_name: str, message: dict) -> int:
+        """
+        Inserisce un messaggio in TESTA alla coda (RPUSH).
+        Utile per ri-accodare messaggi falliti mantenendo la priorità.
+        """
+        payload = json.dumps(message, ensure_ascii=False)
+        result = self._retry(self._client.rpush, queue_name, payload)
+        self.logger.debug(f"Pushed to HEAD of {queue_name}, queue length: {result}")
         return result
 
     def consume_from_queue(

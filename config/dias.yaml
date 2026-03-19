@@ -4,8 +4,9 @@
 # Google GenAI Configuration
 google:
   model_flash_lite: "gemini-flash-lite-latest"
-  rate_limit_seconds: 30
-  rate_limit_penalty_seconds: 86400
+  rate_limit_seconds: 60
+  daily_request_limit: 20
+  rate_limit_penalty_seconds: 900
   max_retries: 3
   temperature: 0.2
   response_mime_type: "application/json"
@@ -35,12 +36,8 @@ redis:
 # Queue names (Redis Lists — BRPOP)
 queues:
   ingestion: "dias:queue:1:ingestion"
-  macro_analysis: "dias:queue:2:macro_analysis"
-  scene_director: "dias:queue:3:scene_director"
-  voice_gen: "dias:queue:4:voice_gen"
-  music_gen: "dias:queue:5:music_gen"
-  mixing: "dias:queue:6:mixing"
-  mastering: "dias:queue:7:mastering"
+  semantic: "dias:queue:2:semantic"
+  voice: "dias:queue:4:voice"
 
 # Storage
 storage:

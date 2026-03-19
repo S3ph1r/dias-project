@@ -636,11 +636,17 @@ class TextIngester(BaseStage):
         """
         try:
             book_id = message.get("book_id")
+            title = message.get("title", "Unknown")
+            
+            # Coherence: The project ID MUST be the normalized title
+            clean_title = self.persistence.normalize_id(title)
+            book_id = clean_title 
+            
             file_path = message.get("file_path")
             original_filename = message.get("original_filename", "unknown")
             
-            if not book_id or not file_path:
-                self.logger.error("Missing required fields: book_id or file_path")
+            if not file_path:
+                self.logger.error("Missing required fields: file_path")
                 return None
             
             self.logger.info(f"Processing book {book_id}: {original_filename}")
@@ -824,8 +830,12 @@ def main():
     """
     Main function for running TextIngester as standalone service.
     """
+    # Setup logging
+    logger = setup_logging("TextIngester")
+    logger.info("🚀 Starting DIAS Stage A - Text Ingester")
+
     config = get_config()
-    redis_client = DiasRedis(config.redis)
+    redis_client = get_redis_client(logger=logger)
     
     ingester = TextIngester(redis_client, config)
     
@@ -839,7 +849,7 @@ def main():
         print("\nShutting down TextIngester...")
         ingester.stop()
     except Exception as e:
-        print(f"Fatal error: {e}")
+        logger.error(f"Fatal error: {e}")
         ingester.stop()
 
 

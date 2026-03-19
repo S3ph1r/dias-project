@@ -197,22 +197,44 @@ class BaseStage(ABC):
                 try:
                     result = self.process(message)
 
-                    # Produce output
-                    if result is not None and self.output_queue:
-                        self.redis.push_to_queue(self.output_queue, result)
+                    # Produce output only if success
+                    if result is not None:
+                        if self.output_queue:
+                            self.redis.push_to_queue(self.output_queue, result)
 
-                    # Checkpoint
-                    if book_id != "unknown":
-                        self.redis.set_checkpoint(book_id, self.stage_number)
+                        # Checkpoint only on SUCCESSful processing
+                        if book_id != "unknown":
+                            self.redis.set_checkpoint(book_id, self.stage_number)
 
-                    self.logger.info(
-                        f"Completed message for book={book_id}",
-                        extra={"book_id": book_id},
-                    )
+                        self.logger.info(
+                            f"Completed message for book={book_id}",
+                            extra={"book_id": book_id},
+                        )
+                    else:
+                        self.logger.info(f"Process returned None for book={book_id} (No output/Skipped)")
 
                 except Exception as e:
+                    # IMPLEMENTAZIONE CATENA SEQUENZIALE RIGOROSA (v2.0)
+                    error_msg = str(e)
+                    self.logger.error(f"❌ Errore critico in {self.stage_name}: {error_msg}")
+                    
+                    # 1. Rimetti il messaggio in TESTA alla coda (RPUSH su BRPOP queue)
+                    self.logger.info(f"🔄 Re-enqueueing task for book={book_id} to the HEAD of {self.input_queue}")
+                    self.redis.push_to_head(self.input_queue, message)
+                    
+                    # 2. Imposta il flag di PAUSA GLOBALE in Redis
+                    pause_key = "dias:status:paused"
+                    pause_reason = f"Stage {self.stage_name} (Number {self.stage_number}) failed: {error_msg}"
+                    self.redis.set(pause_key, pause_reason)
+                    self.logger.critical(f"🛑 GLOBAL PAUSE SET: {pause_reason}")
+                    
+                    # 3. Shutdown immediato dello stadio
+                    self._running = False
                     if not self.on_error(e, message):
                         break
+                    
+                    # Forza l'uscita del processo per essere certi che l'orchestratore lo rilevi
+                    sys.exit(1)
 
         finally:
             self.on_stop()

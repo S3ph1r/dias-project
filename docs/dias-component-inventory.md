@@ -40,6 +40,7 @@ DIAS (Document Intelligence & Analysis System) è una pipeline di elaborazione d
   ```python
   process(data: Any) -> Any  # Da implementare nei figli
   run() -> bool              # Orchestrazione completa
+- **Hardening 2026**: Implementata logica `push_to_head` (re-enqueue atomico) in caso di errore 429 per garantire zero perdite di messaggi e mantenimento della sequenzialità.
   ```
 
 #### **`config.py`** - Gestione Configurazione
@@ -56,9 +57,7 @@ DIAS (Document Intelligence & Analysis System) è una pipeline di elaborazione d
 #### **`logging_setup.py`** - Logging Strutturato
 - **Funzionalità**:
   - Log JSON strutturati per parsing automatico
-  - Livelli configurabili per componente
-  - Rotazione files e gestione dimensione
-  - Correlation ID per tracciamento richieste
+  - Setup centralizzato per Orchestrator e Workers
 - **Formato output**:
   ```json
   {
@@ -107,8 +106,9 @@ DIAS (Document Intelligence & Analysis System) è una pipeline di elaborazione d
 - **Metodi DIAS**:
   ```python
   push_to_queue(queue_name, message) -> int
-  consume_from_queue(queue_name, count=1) -> list
+  push_to_head(queue_name, message) -> int      # Nuova 2026: rpush per retries prioritari
   queue_length(queue_name) -> int
+  llen(queue_name) -> int
   ```
 
 #### **`models.py`** - Modelli Dati Pydantic
@@ -153,29 +153,40 @@ DIAS (Document Intelligence & Analysis System) è una pipeline di elaborazione d
 
 #### **`stage_b_semantic_analyzer.py`** - Stage B: Analisi Semantica
 - **🎯 Scopo**: Analisi AI dei chunk con Gemini
-- **Input**: Chunk da Redis queue `stage_b_input`
-- **Output**: Analisi su Redis queue `stage_c_input`
+- **Input**: Chunk da Redis queue `dias:queue:2:semantic`
+- **Output**: Analisi su disco (`stage_b/output/`) + task per Stage C.
 - **Funzionalità**:
-  - Analisi sentiment e topic extraction
-  - Entity recognition e linking
-  - Riepilogo automatico per chunk
-  - Punteggio rilevanza contenuto
-- **Rate limiting**: Gestione quota Gemini API
+  - Analisi sentiment e topic extraction.
+  - Generazione macro-analisi per la regia.
+- **Rate limiting**: Gestione quota Gemini API (Pacing 60s + Daily Limit 20 RPD).
 
-#### **`gemini_rate_limiter.py`** - Rate Limiter Globale e Lockout
+#### **`stage_c_scene_director.py`** - Stage C: Regia e Segmentazione
+- **🎯 Scopo**: Trasformare chunk in scene recitabili per Qwen3.
+- **Input**: Analisi da Redis queue `dias:queue:2:semantic`.
+- **Output**: Master JSON + Task su `dias:queue:4:voice`.
 - **Funzionalità**:
-  - Gestione quota Gemini (30s cooldown).
-  - **Lockout 429**: Auto-blocco di 10 minuti in caso di errore quota.
-  - Singleton pattern condiviso tra tutti gli stage.
-  - Persistenza stato lockout (opzionale via Redis).
+  - Segmentazione basata su emotional beats.
+  - Generazione `qwen3_instruct` (Tone, Rhythm, Attitude).
+  - Normalizzazione fonetica del testo.
+
+#### **`gemini_rate_limiter.py`** - Rate Limiter Globale su Redis
+- **Pacing**: 60s (Configurabile in `dias.yaml`).
+  - **Daily Monitor**: Hard stop a quota RPD raggiunta (es. 20) per evitare lockout Google.
+  - **Sincronizzazione Redis**: Utilizza le chiavi `aria:rate_limit:google:*` per garantire il pacing tra Stage B e Stage C indipendenti.
+  - **Lockout 429**: Auto-blocco globale di 15 minuti in caso di errore quota.
+  - Sostituisce i lock in memoria RAM, rendendo l'architettura sicura in multiprocesso.
 
 ---
 
 ### **`scripts/` - Orchestrazione e Utility**
 
-#### **`batch_process_b_c.py`** - Motore del Batch Processing
-- **Scopo**: Esecuzione sequenziale di Stage B e C su tutti i chunk.
-- **Logica**: Gestisce lo skipping e il rate limiting garantendo la produzione dei Master JSON.
+#### **`orchestrator.py`** - Motore della Pipeline Serial-Serial
+- **Scopo**: Gestione "Brain" della pipeline end-to-end.
+- **Logica**: Avvia uno stadio, aspetta lo svuotamento della coda e la persistenza dei file, poi passa al successivo.
+- **Resume**: Capacità nativa di ripartenza analizzando lo stato del disco.
+
+#### **`batch_process_b_c.py`** - Vecchio motore Batch
+- **Stato**: **OBSOLETO** - Sostituito da `orchestrator.py`.
 
 #### **`scripts/archive_manager.py`** - Manutenzione
 - **Scopo**: Archiviazione script obsoleti e cleanup directory `output/`.
@@ -187,8 +198,8 @@ DIAS (Document Intelligence & Analysis System) è una pipeline di elaborazione d
 | Base Stage | `src/common/base_stage.py` | ✅ Completo | Foundation per tutti gli stage |
 | Stage A | `src/stages/stage_a_text_ingester.py` | ✅ Completo | PDF → Chunk testuali |
 | Stage B | `src/stages/stage_b_semantic_analyzer.py` | ✅ Completo | Analisi AI con Gemini |
-| Stage C | `src/stages/stage_c_scene_director.py` | ✅ Progress | Master JSON + Regia Qwen3 |
-| Rate Limiter | `src/stages/gemini_rate_limiter.py` | ✅ Completo | Gestione quota + Lockout 10m |
-| Stage D | `src/stages/stage_d_voice_gen.py` | ✅ Completo | ARIA Proxy Integration |
+| Stage C | `src/stages/stage_c_scene_director.py` | ✅ Completo | Master JSON + Regia Qwen3 |
+| Rate Limiter | `src/stages/gemini_rate_limiter.py` | ✅ Completo | Gestione quota + Lockout configurabile |
+| Stage D | `src/api/main.py` (Proxy) | ✅ Completo | ARIA Voice Queue Integration |
 
 *Legenda*: ✅ Completo | 🚧 In Sviluppo | 📋 Pianificato | ❌ Non Iniziato

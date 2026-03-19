@@ -179,7 +179,7 @@ class TestStageBSemanticAnalyzer:
     
     def test_analyzer_initialization(self, analyzer):
         """Test inizializzazione analyzer"""
-        assert analyzer.model_name == "gemini-2.5-flash"
+        assert analyzer.model_name == "gemini-flash-lite-latest"
         assert analyzer.redis_client is not None
         assert analyzer.gemini_client is not None
     

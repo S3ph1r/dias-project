@@ -27,7 +27,7 @@ class MockGeminiClient:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"MockGeminiClient cache directory: {self.cache_dir}")
     
-    def _generate_cache_key(self, prompt: str, model: str = "gemini-2.5-flash") -> str:
+    def _generate_cache_key(self, prompt: str, model: str = "gemini-flash-lite-latest") -> str:
         """Genera una chiave univoca per il prompt e modello"""
         content = f"{model}:{prompt}"
         return hashlib.md5(content.encode()).hexdigest()
@@ -60,7 +60,7 @@ class MockGeminiClient:
             'prompt': prompt,
             'response': response,
             'cached_at': datetime.now().isoformat(),
-            'model': 'gemini-2.5-flash'
+            'model': 'gemini-flash-lite-latest'
         }
         
         try:
@@ -70,7 +70,7 @@ class MockGeminiClient:
         except Exception as e:
             self.logger.warning(f"Errore nel salvataggio cache {cache_key}: {e}")
     
-    def generate_content(self, prompt: str, model: str = "gemini-2.5-flash") -> str:
+    def generate_content(self, prompt: str, model: str = "gemini-flash-lite-latest") -> str:
         """Metodo principale per generare contenuto (mock)"""
         cache_key = self._generate_cache_key(prompt, model)
         
@@ -170,9 +170,38 @@ class MockGeminiClient:
         return json.dumps(mock_data, indent=2, ensure_ascii=False)
     
     def _generate_scene_analysis_mock(self) -> str:
-        """Genera una risposta mock per annotazione testo Fish"""
-        # Risposta pulita per evitare errori di parsing
-        return '{"annotated_text": "[Istruzione: Narra con tono cupo.] (sospira) Neo-Kyoto rifletteva sul metallo. (passi) Kaelen era seguito."}'
+        """Genera una risposta mock per Stage C (Micro-Scene format v3)."""
+        mock_scenes = [
+            {
+                "scene_label": "Narrazione: tensione tecnica",
+                "clean_text": "Il codice giaceva aperto davanti a loro. Il sistema era compromesso, eppure una via d'uscita si profilava nell'ombra.",
+                "qwen3_instruct": "Read with quiet, building tension. Start flat and analytical, then allow a subtle shift toward restrained hope — the first breath after holding it.",
+                "speaker": None,
+                "pause_after_ms": 400
+            },
+            {
+                "scene_label": "Kaelen's declaration",
+                "clean_text": "\"È possibile,\" disse Kaelen con voce ferma.",
+                "qwen3_instruct": "Quiet authority. The words are deliberate, measured. Contained conviction, not boastful.",
+                "speaker": "Kaelen",
+                "pause_after_ms": 80
+            },
+            {
+                "scene_label": "Kaelen's plan",
+                "clean_text": "\"Useremo la loro stessa infrastruttura, contro di loro.\"",
+                "qwen3_instruct": "Building intensity. Each word lands with strategic weight. The final phrase carries contained triumph, almost whispered.",
+                "speaker": "Kaelen",
+                "pause_after_ms": 200
+            },
+            {
+                "scene_label": "Naila's reaction",
+                "clean_text": "Naila lo guardò, sbalordita.",
+                "qwen3_instruct": "Stunned silence. The narration is hushed, carrying the weight of the revelation.",
+                "speaker": None,
+                "pause_after_ms": 400
+            }
+        ]
+        return json.dumps(mock_scenes, indent=2, ensure_ascii=False)
 
 
 def create_mock_gemini_client(logger: Optional[logging.Logger] = None) -> MockGeminiClient:

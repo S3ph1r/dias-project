@@ -15,24 +15,23 @@ ARCHITECTURE:
 
 INFRASTRUCTURE:
   nodes:
-    - Development Node: LXC 190 (NH-Mini) - Sviluppo e Doc
-    - Runtime Node: LXC 201 (DIAS RT) - Dashboard e API Hub
-    - Infrastructure Node: Redis Server (LXC 120 o locale)
-    - Worker Node: Consumer TTS/MusicGen su GPU (ARIA)
-  storage: /home/Projects/NH-Mini/sviluppi/dias/data/ (Sincronizzato via GitHub)
+    - Brain Node: LXC 190 (NH-Mini) - Regia e Orchestrazione
+    - Infrastructure Node: Redis Server (LXC 120) - Universal State Bus
+    - Worker Node: Consumer TTS/MusicGen su GPU (ARIA - Node 139)
+  storage: /home/Projects/NH-Mini/sviluppi/dias/data/ (Sincronizzato tra LXC 190 e 201)
 
 COMPONENTS:
   list:
     - TextIngester (A): Raggruppamento PDF in chunk
-    - SemanticAnalyzer (B): Profilazione EMOTIVA macro 
-    - SceneDirector (C): Regia fine, normalizzazione e istruzioni Qwen3
-    - VoiceGenProxy (D): Costruttore payload agnostico per ARIA
-    - MusicMixer (E-F-G): Generazione colonna sonora e mix stereo FFmpeg
+    - SemanticAnalyzer (B): Profilazione EMOTIVA macro (API Gemini)
+    - SceneDirector (C): Regia fine, normalizzazione e istruzioni Qwen3-TTS
+    - VoiceGenProxy (D): Integrazione agnostica ARIA via Redis 120
 
 KNOWLEDGE_INDEX:
   entries:
     - docs/blueprint.md
     - docs/dias-component-inventory.md
+    - docs/development-roadmap.md
 
 CREDENTIALS:
   list:
@@ -40,13 +39,13 @@ CREDENTIALS:
 
 ERROR_HANDLING:
   patterns:
-    - "429 Too Many Requests: Lockout di 24 ore (GeminiRateLimiter) e pause"
-    - "Coda Stage D ferma: Controllare ARIA su Windows se processa la task TTS"
+    - "QUOTA_EXHAUSTED: Attesa reset giornaliero quota Gemini su Redis 120"
+    - "Coda Voice ferma: Verificare stato 'active' dei nodi ARIA su Redis 120"
 
 DEVELOPMENT_PHASE:
-  phase: development
-  priorities: Completare la stabilità degli Stage C e D per 32 chunk continui, per poi avviare i generatori musicali
-  constraints: Limits della quota giornaliera (Free Tier: 20 chiamate/giorno) e disponibilità hardware della GPU esterna.
+  phase: production_testing
+  priorities: Validazione massiva 503 scene su ARIA e avvio Stage E (MusicGen)
+  constraints: Quota Gemini (1000 chiamate/giorno configurate) e disponibilità GPU ARIA.
 
 OVERRIDES:
   list: []

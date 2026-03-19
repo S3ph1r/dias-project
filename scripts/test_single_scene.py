@@ -19,10 +19,12 @@ def push_single_scene(scene_file_path: str):
         with open(path, 'r', encoding='utf-8') as f:
             scene_data = json.load(f)
         
+        # Force real Redis for E2E testing
+        os.environ["MOCK_SERVICES"] = "false"
         redis_client = get_redis_client()
-        queue_name = "dias:queue:4:voice_gen"
+        queue_name = "dias:queue:4:voice"
         
-        redis_client.lpush(queue_name, json.dumps(scene_data))
+        redis_client.push_to_queue(queue_name, scene_data)
         print(f"Successfully pushed {path.name} to {queue_name}")
         print("Now start Stage D Voice Generator on LXC 201 to process it.")
         

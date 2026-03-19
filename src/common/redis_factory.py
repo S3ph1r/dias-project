@@ -45,7 +45,7 @@ def get_redis_client(logger: logging.Logger = None) -> Union['DiasRedis', 'MockR
     """
     
     # Check environment configuration
-    mock_services = os.getenv('MOCK_SERVICES', 'true').lower() == 'true'
+    mock_services = os.getenv('MOCK_SERVICES', 'false').lower() == 'true'
     
     if logger:
         logger.info(f"Redis factory: MOCK_SERVICES={mock_services}")

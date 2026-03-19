@@ -9,6 +9,18 @@ import datetime
 from src.common.config import get_config
 from src.common.redis_factory import get_redis_client
 from src.common.registry import ActiveTaskTracker
+from src.common.logging_setup import get_logger
+from src.common.persistence import DiasPersistence
+
+logger = get_logger("api_hub")
+
+app = FastAPI(title="DIAS API Hub", version="1.0.0")
+
+# Base directory for data scanning (execution root)
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Instanziazione Persistence per normalizzazione e gestione file
+persistence = DiasPersistence(base_path=str(BASE_DIR / "data"))
 
 app = FastAPI(title="DIAS API Hub", version="1.0.0")
 
@@ -103,6 +115,7 @@ async def get_project_status(project_id: str) -> Dict[str, Any]:
     Detailed progress for a specific book.
     Calculates progress and returns file lists for each stage.
     """
+    project_id = persistence.normalize_id(project_id)
     base_path = BASE_DIR / "data"
     stages = ["stage_a", "stage_b", "stage_c", "stage_d", "stage_e", "stage_f", "stage_g"]
     
@@ -151,10 +164,22 @@ async def get_project_status(project_id: str) -> Dict[str, Any]:
 
 @app.get("/info/quota")
 async def get_quota_info() -> Dict[str, Any]:
-    """Returns the current Gemini API quota usage."""
+    """Returns the current ARIA/Gemini API quota usage from Redis."""
     try:
-        from src.common.quota_manager import get_quota_manager
-        return get_quota_manager().get_quota_info()
+        today = datetime.date.today().isoformat()
+        daily_key = f"aria:rate_limit:google:daily_count:{today}"
+        usage = redis_client.get(daily_key)
+        usage = int(usage) if usage else 0
+        
+        # We assume the limit is 20 (standardized in ARIA)
+        limit = 20
+        
+        return {
+            "usage": usage,
+            "limit": limit,
+            "available": max(0, limit - usage),
+            "service": "ARIA centralized"
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -184,7 +209,7 @@ async def reset_project_stage(project_id: str, stage_id: str):
             
         # 2. Get project clean title (assuming project_id is already the clean title for now or lookup)
         # For DIAS, project_id is usually the clean_title
-        clean_title = project_id
+        clean_title = persistence.normalize_id(project_id)
         
         output_path = BASE_DIR / "data" / target_dir_name / "output" / clean_title
         
@@ -197,15 +222,12 @@ async def reset_project_stage(project_id: str, stage_id: str):
         # This is a bit complex as it depends on the flow. 
         # Simplified: if resetting Stage C, look at Stage B outputs.
         
-        # Map of stage to its input queue
+        # Map of stage to its input queue (keys MUST match dias.yaml:queues)
         queue_map = {
-            "stage_a": "dias:queue:1:ingestion", # Stage A usually starts from raw PDF, handled separately
-            "stage_b": "dias:queue:2:macro_analysis",
-            "stage_c": "dias:queue:3:scene_director",
-            "stage_d": "dias:queue:4:voice_gen",
-            "stage_e": "dias:queue:5:music_gen",
-            "stage_f": "dias:queue:6:mixing",
-            "stage_g": "dias:queue:7:mastering"
+            "stage_b": "ingestion",  # Stage A -> B
+            "stage_c": "semantic",   # Stage B -> C
+            "stage_d": "voice",      # Stage C -> D
+            "stage_e": "music_gen",  # Placeholder
         }
         
         # Map of stage to its source directory (previous stage output)
@@ -226,8 +248,15 @@ async def reset_project_stage(project_id: str, stage_id: str):
                 for file in source_path.glob("*.json"):
                     with open(file, 'r', encoding='utf-8') as f:
                         data = json.load(f)
-                    redis_client.lpush(queue_map[stage_id], json.dumps(data))
-                    count += 1
+                    
+                    config_key = queue_map.get(stage_id)
+                    queue_name = config.queues.dict().get(config_key) if config_key else None
+                    
+                    if queue_name:
+                        redis_client.push_to_queue(queue_name, data)
+                        count += 1
+                    else:
+                        logger.error(f"Queue for stage {stage_id} not mapped or found in config")
                 return {"status": "success", "message": f"Reset {stage_id} for {clean_title}. Re-enqueued {count} items."}
         
         return {"status": "success", "message": f"Reset {stage_id} for {clean_title}. Output cleared."}
@@ -242,7 +271,7 @@ async def check_resume_status(project_id: str):
     Returns a summary of voice usage.
     """
     try:
-        clean_title = project_id
+        clean_title = persistence.normalize_id(project_id)
         source_dir = BASE_DIR / "data" / "stage_c" / "output"
         
         if not source_dir.exists():
@@ -273,14 +302,14 @@ async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = Non
     Scans the entire pipeline for the project and enqueues missing tasks.
     """
     try:
-        clean_title = project_id
+        clean_title = persistence.normalize_id(project_id)
         
-        # Define the chain of stages
+        # Define the chain of stages - Based on standardized dias.yaml keys
+        # Mapping: (source_stage_dir, target_stage_dir, target_input_queue_key)
         stages = [
-            ("stage_a", "stage_b", "dias:queue:2:macro_analysis"),
-            ("stage_b", "stage_c", "dias:queue:3:scene_director"),
-            ("stage_c", "stage_d", "dias:queue:4:voice_gen"),
-            # Stage D, E, F, G...
+            ("stage_a", "stage_b", "ingestion"),
+            ("stage_b", "stage_c", "semantic"),
+            ("stage_c", "stage_d", "voice"), 
         ]
         
         total_pushed = 0
@@ -294,7 +323,7 @@ async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = Non
                 
             # Scan source for files that don't have a corresponding target
             import re
-            for source_file in source_dir.glob(f"{clean_title}-*.json"):
+            for source_file in sorted(source_dir.glob(f"{clean_title}-*.json")):
                 with open(source_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 
@@ -314,31 +343,46 @@ async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = Non
                                 # Apply voice override if provided
                                 voice_override = payload.get("voice_override") if payload else None
                                 if voice_override:
-                                    scene["voice_id"] = voice_override
+                                    # Create a copy to avoid mutating the original data
+                                    scene_to_push = scene.copy()
+                                    scene_to_push["voice_id"] = voice_override
+                                else:
+                                    scene_to_push = scene
                                     
-                                redis_client.lpush(queue, json.dumps(scene))
-                                total_pushed += 1
-                    else:
-                        # Skip single scene files to avoid double pushing
-                        pass
+                                # Use dynamic queue name from config for Stage D
+                                queue_name = config.queues.dict().get(queue)
+                                if queue_name:
+                                    redis_client.push_to_queue(queue_name, scene_to_push)
+                                    total_pushed += 1
+                                else:
+                                    logger.error(f"Queue key {queue} not found in config")
                 else:
                     # Generic stage logic (e.g. Stage A -> B, Stage B -> C)
                     chunk_label = data.get("chunk_label") or chunk_from_file
                     if chunk_label:
                         search_pattern = f"{clean_title}-{chunk_label}-*.json"
                         if not list(target_dir.glob(search_pattern)):
-                            # Normalize text for Stage B
-                            if "text" not in data and "block_text" in data:
-                                data["text"] = data["block_text"]
-                            
-                            # Ensure envelope for Stage C
-                            if "book_id" not in data:
-                                data["book_id"] = clean_title
-                            if "block_id" not in data:
-                                data["block_id"] = chunk_label
+                            # Use dynamic queue name from config
+                            queue_name = config.queues.dict().get(queue)
+                            if queue_name:
+                                # Schema mapping for Resume
+                                message_to_push = data.copy()
                                 
-                            redis_client.lpush(queue, json.dumps(data))
-                            total_pushed += 1
+                                # Stage B expects 'text', Stage A files have 'block_text'
+                                if source_stage == "stage_a" and "block_text" in message_to_push:
+                                    message_to_push["text"] = message_to_push["block_text"]
+                                
+                                # Enforce coherence fields
+                                message_to_push["clean_title"] = clean_title
+                                message_to_push["chunk_label"] = chunk_label
+                                message_to_push["book_id"] = clean_title
+                                
+                                logger.info(f"Resuming {source_stage} -> {target_stage}: Pushing {chunk_label} (block_id: {message_to_push.get('block_id')}, text_len: {len(message_to_push.get('text', ''))})")
+                                
+                                redis_client.push_to_queue(queue_name, message_to_push)
+                                total_pushed += 1
+                            else:
+                                logger.error(f"Queue key {queue} not found in config")
                         
         return {"status": "success", "pushed_count": total_pushed}
         
@@ -356,6 +400,8 @@ async def push_scene_to_stage_d(project_id: str, payload: Dict[str, str]):
     
     if not scene_file_name:
         raise HTTPException(status_code=400, detail="Missing scene_file")
+    
+    project_id = persistence.normalize_id(project_id)
     
     # Use BASE_DIR for consistency
     scene_path = BASE_DIR / "data" / "stage_c" / "output" / project_id / scene_file_name
@@ -376,8 +422,8 @@ async def push_scene_to_stage_d(project_id: str, payload: Dict[str, str]):
         if voice_override:
             scene_data["voice_id"] = voice_override
         
-        target_queue = "dias:queue:4:voice_gen"
-        redis_client.lpush(target_queue, json.dumps(scene_data))
+        target_queue = config.queues.voice
+        redis_client.push_to_queue(target_queue, scene_data)
         
         return {
             "status": "success", 
@@ -431,6 +477,7 @@ async def control_project(project_id: str, payload: Dict[str, str]):
     Controls the flow of a project using Redis semaphores.
     Allowed actions: "start", "suspend", "resume", "stop"
     """
+    project_id = persistence.normalize_id(project_id)
     action = payload.get("action")
     if action not in ["start", "suspend", "resume", "stop"]:
         raise HTTPException(status_code=400, detail="Invalid action")
@@ -454,6 +501,7 @@ async def get_project_outputs(project_id: str) -> List[Dict[str, Any]]:
     """
     Lists all generated assets (WAV files) for a specific project.
     """
+    project_id = persistence.normalize_id(project_id)
     output_dir = BASE_DIR / "data" / "stage_d" / "output"
     if not output_dir.exists():
         return []

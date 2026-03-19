@@ -16,11 +16,12 @@ import os
 import sys
 import time
 from pathlib import Path
+from dotenv import load_dotenv
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-import google.genai as genai
-from dotenv import load_dotenv
+
+# sys.path.insert is handled if needed
 
 # Aggiungi il path src al Python path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -29,9 +30,9 @@ from src.common.base_stage import BaseStage
 from src.common.config import get_config
 from src.common.redis_client import DiasRedis
 from src.common.persistence import DiasPersistence
-from src.stages.gemini_rate_limiter import gemini_rate_limiter
 from src.stages.mock_gemini_client import MockGeminiClient
-from src.common.quota_manager import get_quota_manager
+from src.common.gateway_client import GatewayClient
+from src.common.registry import ActiveTaskTracker
 import logging
 
 
@@ -92,7 +93,7 @@ class TextDirector:
         self.config = config
         self.logger = logger
 
-    def annotate_text_for_qwen3(self, text_content: str, emotion: str, emotion_description: str) -> List[dict]:
+    def annotate_text_for_qwen3(self, text_content: str, emotion: str, emotion_description: str, book_id: str, block_id: str, job_id: Optional[str] = None) -> List[dict]:
         """
         Chiama Gemini per produrre output compatibile con Qwen3-TTS:
         - Suddivisione in SCENE basata su cambi di tono (Emotional Beats).
@@ -110,135 +111,207 @@ class TextDirector:
         )
 
         prompt = f"""
-Sei un DIRETTORE ARTISTICO esperto in audiolibri.
-Il tuo compito è trasformare un blocco di testo narrativo in una sequenza di SCENE AUDIO ottimizzate per un motore TTS Zero-Shot (Qwen3).
+Sei un DIRETTORE ARTISTICO esperto in audiolibri professionali di alta qualità.
+Il tuo compito è trasformare un blocco di testo narrativo in una sequenza di MICRO-SCENE AUDIO (battute) ottimizzate per un motore TTS Zero-Shot (Qwen3-TTS 1.7B).
 
-ANALISI E SEGMENTAZIONE (MANDATORIO):
-Non dividere il testo meccanicamente. Crea una nuova scena ogni volta che c'è un cambio strutturale, temporale o emotivo.
-Ogni scena narrativa deve avere una lunghezza compresa tra 40 e 300 parole circa.
+---------------------------------------------------------------
+FASE 1: SEGMENTAZIONE IN MICRO-SCENE (MANDATORIO)
+---------------------------------------------------------------
+
+Dividi il testo in BATTUTE BREVI, seguendo queste regole:
+
+CRITERIO DI DIVISIONE E CONTINUITÀ (CRITICO):
+- Ogni battuta di DIALOGO di un personaggio = 1 micro-scena separata
+- Ogni TITOLO di capitolo/sezione = 1 micro-scena dedicata (sempre isolati)
+- SEQUENZE NARRATIVE e DESCRITTIVE: Se hai un lungo blocco di descrizione continua (es. atmosfera, ambiente) che condivide lo stesso "mood", NON SPEZZARLO frase per frase. Raggruppa le frasi in un'unica micro-scena, sforzandoti di arrivare vicino al limite massimo di 60 parole.
+- Spezza una sequenza narrativa in due micro-scene SOLO se c'è un REALE cambio di azione, di focalizzazione o un capoverso molto netto.
+
+LUNGHEZZA:
+- Micro-scene DIALOGICHE: 5-40 parole (una battuta per personaggio)
+- Micro-scene NARRATIVE: 10-60 parole (massimizza l'uso delle 60 parole per evitare l'effetto "collage")
+- MAI superare 60 parole per micro-scena
+- Se una frase supera 60 parole, spezzala al punto o alla virgola più naturale, mantenendo però il tono coerente.
 
 REGOLE GENERALI SUI TITOLI E SULLA STRUTTURA (ISOLAMENTO MANDATORIO):
 Analizza la struttura visiva del testo (ritorni a capo, frasi brevi isolate all'inizio).
-Se il blocco inizia con una o più frasi brevi isolate (sotto le 15 parole) separate dal corpo principale da doppi ritorni a capo (\\n\\n) che fungono da Titolo della Saga, Titolo del Libro, o Titolo_Numero del Capitolo, DEVI isolare OGNUNA di queste in una scena singola e separata.
+Se il blocco inizia con una o più frasi brevi isolate (sotto le 15 parole) separate dal corpo principale da doppi ritorni a capo (\n\n) che fungono da Titolo della Saga, Titolo del Libro, o Titolo_Numero del Capitolo, DEVI isolare OGNUNA di queste in una micro-scena singola e separata.
 - NON unire mai un titolo strutturale con il paragrafo narrativo (incipit) che lo segue.
 
-REGOLE SUL TESTO DELLA SCENA (clean_text):
-1. PULIZIA TESTO:
-   - Converti TUTTI i numeri arabi in parole scritte per esteso (es. "2042" → "duemilaquarantadue", "42-B" → "quarantadue B").
-   - Converti numeri romani in ordinali (es. "Capitolo I" → "Capitolo Primo").
-   - Rimuovi tutti i tag tra parentesi presenti (es. (neutral), (break), ecc.).
-   - Rimuovi punteggiatura residua dai titoli (es. i ":" alla fine di un titolo di capitolo).
-   - Aggiungi l'accento grafico sulle parole italiane ambigue: "pàtina", "futòn", "sùbito", "ancòra/àncora".
-   - NON inserire tag di nessun tipo nel testo (clean_text).
-2. PUNTEGGIATURA E RITMO:
-   - Inserisci virgole extra (,) o puntini di sospensione (...) dove senti che la voce deve prendere fiato o creare suspense. Il TTS legge la punteggiatura come istruzioni di ritmo.
+---------------------------------------------------------------
+FASE 2: PULIZIA TESTO (clean_text) — MANDATORIO
+---------------------------------------------------------------
 
-PARAMETRI DI REGIA (MANDATORIO per qwen3_instruct):
-Per ogni scena generata, devi SCEGLIERE una e una sola opzione da ciascuna di queste 3 liste ESATTAMENTE come scritte (in Inglese):
+1. NUMERI → PAROLE:
+   - Converti TUTTI i numeri arabi in parole per esteso
+     (es. "2042" → "duemilaquarantadue", "42-B" → "quarantadue B")
+   - Converti numeri romani in ordinali
+     (es. "Capitolo I" → "Capitolo Primo")
 
-1. Tone (Colore Emotivo): [Dark, Neutral, Bright, Solemn, Intimate, Tense, Melancholic, Joyful]
-2. Rhythm (Pacing): [Very Slow, Slow, Moderate, Fast, Urgent]
-3. Attitude (Intenzione): [Detached, Conversational, Whispered, Authoritative, Sarcastic, Hesitant, Factual]
+2. ACCENTI FONETICI ITALIANI:
+   - Aggiungi SEMPRE l'accento grafico sulle parole ambigue:
+     "pàtina", "futòn", "sùbito", "ancòra" (di nuovo) vs "àncora" (nautica),
+     "compìto" (cortese) vs "còmpito" (esercizio)
+   - Questo è CRITICO per la corretta pronuncia TTS.
 
-EMOZIONE DI BASE (Rilevata nel blocco precedente): {emotion_description}
+3. TAG E PULIZIA:
+   - Rimuovi tutti i tag tra parentesi (es. (neutral), (break))
+   - Rimuovi punteggiatura residua dai titoli (es. ":" alla fine)
+   - NON inserire nessun tag nel clean_text
+
+4. PUNTEGGIATURA ESPRESSIVA:
+   - Inserisci virgole extra (,) dove la voce deve respirare
+   - Usa puntini di sospensione (...) per suspense e esitazione
+   - Per i dialoghi: separa chiaramente le battute con virgole e trattini
+
+---------------------------------------------------------------
+FASE 3: DIRETTIVA VOCALE PER MICRO-SCENA (qwen3_instruct)
+---------------------------------------------------------------
+
+Qwen3-TTS è controllato da istruzioni in PROSA NATURALE in INGLESE.
+NON usare mai etichette rigide (es. "Tone: Dark. Rhythm: Slow.").
+
+Per ogni micro-scena scrivi 1-2 frasi in inglese che descrivano:
+- L'EMOZIONE PRECISA di quel momento (non generica)
+- Il PACING specifico (veloce? lento? con pause?)
+- Il REGISTRO VOCALE se è un dialogo (sussurro? grido? ironia?)
+
+QUALITÀ DELL'INSTRUCT E REGOLA DELLA COERENZA (CRITICO):
+- Sii SPECIFICO sul momento, non generico sulla scena
+- Per scene narrative consecutive che descrivono un momento fluido, MANTIENI LO STESSO TONO nell'instruct (es. usa istruzioni come "Continue narrating smoothly in the same descriptive tone"). NON cambiare radicalmente emozione da una frase all'altra se appartengono allo stesso contesto logico.
+- Cambia l'instruct in modo drastico SOLO quando c'è una svolta emotiva di trama reale.
+- Per i DIALOGHI: descrivi come parla quel PERSONAGGIO specifico ("Naila asks with bright curiosity, voice rising").
+- Per le RIVELAZIONI: descrivi l'arco emotivo ("Starts measured, then accelerates").
+- Per i TITOLI (Libro, Capitolo): "Read with quiet solemnity. Let the words land with weight."
+- Per l'Incipit di luogo/tempo (es. Anno 2042, Neo-Kyoto): "State the time and location clearly and matter-of-factly, like a factual report."
+- Non menzionare mai che si tratta di un audiolibro italiano nell'istruzione.
+
+---------------------------------------------------------------
+FASE 4: METADATI
+---------------------------------------------------------------
+
+- scene_label: breve etichetta descrittiva (es. "Naila's question", "Kaelen reveals the plan")
+- speaker: il nome del personaggio che parla (null se è narrazione pura)
+- pause_after_ms: pausa strutturale DOPO questa micro-scena da inserire in fase di mixaggio. UTILIZZA SOLO I SEGUENTI VALORI:
+  - 80 = Nessuna pausa. La narrazione o il dialogo continuano in modo fluido nella scena immediatamente successiva.
+  - 200 = Pausa breve. Fine periodo o leggero cambio di battuta nello stesso dialogo.
+  - 400 = Pausa media. Cambio di interlocutore o un nuovo capoverso.
+  - 1500 = Pausa lunga per Didascalie di tempo/luogo (es. dopo "Anno 2042, Neo-Kyoto.").
+  - 2000 = Pausa Molto Lunga. OBBLIGATORIA dopo un Titolo di Saga, Titolo di Libro, o Numero di Capitolo. Serve a staccare nettamente l'intestazione dalla narrazione che segue.
+
+---------------------------------------------------------------
+
+EMOZIONE DI BASE del blocco (da Stage B): {emotion_description}
 
 TESTO DA ELABORARE:
 {text_content}
 
-Rispondi ESCLUSIVAMENTE con un JSON che sia un ARRAY di oggetti. Formato esatto richiesto:
+Rispondi ESCLUSIVAMENTE con un JSON ARRAY. Formato:
 [
   {{
-    "scene_label": "breve_descrizione_es_titolo_libro_o_descrizione",
-    "clean_text": "Il testo pronto per la lettura, normalizzato e con accenti",
-    "tone": "valore scelto dalla lista",
-    "rhythm": "valore scelto dalla lista",
-    "attitude": "valore scelto dalla lista"
+    "scene_label": "breve etichetta",
+    "clean_text": "testo pulito per TTS, con accenti e numeri convertiti",
+    "qwen3_instruct": "1-2 frasi in inglese, specifiche per questo momento",
+    "speaker": "NomePersonaggio o null",
+    "pause_after_ms": 200
   }},
   ...
 ]
 """
 
-        max_retries = 5
-        base_delay = 2
-
-        for attempt in range(max_retries):
-            try:
-                # Gestione Quota Giornaliera
-                quota_manager = get_quota_manager()
-                if not quota_manager.is_available():
-                    self.logger.warning("⚠️ Quota API Gemini esaurita per oggi (Stage C).")
-                    raise RuntimeError("GEMINI_QUOTA_EXHAUSTED")
-
-                # Applica pacing globale (30s)
-                gemini_rate_limiter.wait_for_slot()
+        # Applica pacing globale (30s) e verifica quota        # Rate limiting is managed centrally by ARIA.
+        
+        self.logger.info(f"TextDirector Qwen3 Dynamic: emozione_base={emotion}")
+        model_name = self.config.google.model_flash_lite
+        
+        try:
+            # Gestisci client Gateway, reale o mock
+            if isinstance(self.gemini_client, GatewayClient):
+                # Client ARIA Gateway
+                generate_config = {}
+                if hasattr(self.config.google, 'response_mime_type'):
+                    generate_config["response_mime_type"] = self.config.google.response_mime_type
                 
-                self.logger.info(f"TextDirector Qwen3 Dynamic (tentativo {attempt+1}): emozione_base={emotion}")
-                model_name = "gemini-2.5-flash" # Allineato a Stage B per coerenza
+                # Format contents for Gateway (Gemini 2.x standard)
+                contents = [{"role": "user", "parts": [{"text": prompt}]}]
                 
-                if hasattr(self.gemini_client, 'models'):
-                    response = self.gemini_client.models.generate_content(
-                        model=model_name, contents=prompt
+                # Deterministic Job Meta
+                job_meta = {
+                    "book_id": book_id,
+                    "block_id": block_id,
+                    "stage": "stage_c"
+                }
+                
+                response = self.gemini_client.generate_content(
+                    contents=contents,
+                    model_id=model_name,
+                    config=generate_config,
+                    job_id=job_id  # Use fixed job_id
+                )
+                
+                if response["status"] == "error":
+                    self.logger.error(f"Gateway Error in Stage C: {response.get('error')}")
+                    raise RuntimeError(f"GATEWAY_ERROR: {response.get('error')}")
+                
+                response_text = response["output"].get("text", "")
+            
+            else:
+                # Mock client (MockGeminiClient)
+                response_text = self.gemini_client.generate_content(prompt, model=model_name)
+
+            response_text = response_text.strip()
+            
+            # Robust JSON parsing (Fallbacks per risposte parzialmente sporche)
+            import re
+            if "```json" in response_text:
+                match = re.search(r"```json\s*(.*?)\s*```", response_text, re.DOTALL)
+                if match:
+                    response_text = match.group(1)
+            elif "[" in response_text and "]" in response_text:
+                match = re.search(r"(\[.*\])", response_text, re.DOTALL)
+                if match:
+                    response_text = match.group(1)
+
+            scenes_list = json.loads(response_text)
+            if not isinstance(scenes_list, list):
+                scenes_list = [scenes_list]
+            
+            # Validate and sanitize micro-scenes
+            for scene in scenes_list:
+                # Caso legacy: se Gemini ha restituito il vecchio formato (tone/rhythm/attitude)
+                # convertilo in stringa di prosa leggibile.
+                if all(k in scene for k in ["tone", "rhythm", "attitude"]):
+                    tone = scene.get('tone', 'Neutral')
+                    rhythm = scene.get('rhythm', 'Moderate')
+                    attitude = scene.get('attitude', 'Detached')
+                    scene["qwen3_instruct"] = (
+                        f"Read with a {tone.lower()} tone. "
+                        f"Maintain a {rhythm.lower()} pacing throughout. "
+                        f"The delivery should be {attitude.lower()}."
                     )
-                    response_text = response.text
-                else:
-                    response_text = self.gemini_client.generate_content(prompt, model=model_name)
+                elif "qwen3_instruct" not in scene or not scene.get("qwen3_instruct"):
+                    # Fallback se non ha seguito il formato
+                    scene["qwen3_instruct"] = fallback_instruct
+                    
+                    # Nuovi campi micro-scene (con default safe)
+                    if "speaker" not in scene:
+                        scene["speaker"] = None
+                    if "pause_after_ms" not in scene:
+                        scene["pause_after_ms"] = 200  # default pausa breve
+                    
+                    # Retrocompatibilità: genera has_dialogue dal campo speaker
+                    scene["has_dialogue"] = scene.get("speaker") is not None
+                    # dialogue_notes ora è integrato nell'instruct stesso
+                    if "dialogue_notes" not in scene:
+                        scene["dialogue_notes"] = None
 
-                response_text = response_text.strip()
-                import re
-                if "```json" in response_text:
-                    match = re.search(r"```json\s*(.*?)\s*```", response_text, re.DOTALL)
-                    if match:
-                        response_text = match.group(1)
-                elif "[" in response_text and "]" in response_text:
-                    match = re.search(r"(\[.*\])", response_text, re.DOTALL)
-                    if match:
-                        response_text = match.group(1)
-
-                scenes_list = json.loads(response_text)
-                if not isinstance(scenes_list, list):
-                    scenes_list = [scenes_list]
-                
-                # Assemble the structured qwen3_instruct for each scene
-                for scene in scenes_list:
-                    # Se Gemini ha generato i campi separati, li assembliamo
-                    if all(k in scene for k in ["tone", "rhythm", "attitude"]):
-                        # Rimuoviamo il prefisso verboso "Warm Italian male voice..."
-                        # per lasciare solo le direttive strutturali.
-                        scene["qwen3_instruct"] = f"Tone: {scene.get('tone', 'Neutral')}. Rhythm: {scene.get('rhythm', 'Moderate')}. Attitude: {scene.get('attitude', 'Detached')}."
-                        
-                    elif "qwen3_instruct" not in scene:
-                        # Fallback se non ha seguito la formattazione esattamente
-                        scene["qwen3_instruct"] = f"Tone: Neutral. Rhythm: Moderate. Attitude: Detached."
-
-                # Incrementa quota dopo successo
-                quota_manager.increment()
 
                 self.logger.info(f"TextDirector Qwen3 OK | Generate {len(scenes_list)} scene dinamiche strutturate")
                 return scenes_list
 
-            except Exception as e:
-                error_msg = str(e)
-                if "503" in error_msg or "429" in error_msg or "UNAVAILABLE" in error_msg or "limit" in error_msg.lower():
-                    if "429" in error_msg or "exhausted" in error_msg.lower():
-                        gemini_rate_limiter.report_429()
-                        
-                    if attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt)
-                        self.logger.warning(f"API temporanea ({e}), ritento in {delay}s...")
-                        time.sleep(delay)
-                    else:
-                        self.logger.error(f"TextDirector Qwen3 fallito dopo {max_retries} tentativi")
-                else:
-                    self.logger.error(f"Errore TextDirector Qwen3: {e}")
-                    break
-
-        # Fallback: singola scena con testo originale + instruct dalla mappa statica
-        self.logger.warning("Fallback: usata istruzione statica e blocco unico")
-        return [{
-            "scene_label": "fallback_scene",
-            "clean_text": text_content, 
-            "qwen3_instruct": fallback_instruct
-        }]
+        except Exception as e:
+            self.logger.error(f"Errore TextDirector Qwen3: {e}")
+            # Rilancia per permettere a BaseStage di gestire il re-enqueue
+            raise
 
 
     def annotate_text_for_fish(self, text_content: str, emotion_description: str) -> str:
@@ -259,14 +332,23 @@ Rispondi ESCLUSIVAMENTE con un JSON che sia un ARRAY di oggetti. Formato esatto 
         
         for attempt in range(max_retries):
             try:
-                # Applica pacing globale (30s)
-                gemini_rate_limiter.wait_for_slot()
+                self.logger.info(f"Chiamata TextDirector per annotazione Fish S1-mini (LEGACY) - Tentativo {attempt + 1}")
                 
-                self.logger.info(f"Chiamata TextDirector per annotazione Fish S1-mini (Prompt v2.0) - Tentativo {attempt + 1}")
+                # Use gemini-flash-lite-latest as configured
+                model_name = self.config.google.model_flash_lite
                 
-                # Use gemini-2.5-flash as verified in tests (most stable for availability)
-                model_name = "gemini-2.5-flash" 
-                if hasattr(self.gemini_client, 'models'):
+                if isinstance(self.gemini_client, GatewayClient):
+                    # Client ARIA Gateway
+                    contents = [{"role": "user", "parts": [{"text": prompt}]}]
+                    response = self.gemini_client.generate_content(
+                        contents=contents,
+                        model_id=model_name
+                    )
+                    if response["status"] == "error":
+                        raise RuntimeError(f"GATEWAY_ERROR: {response.get('error')}")
+                    response_text = response["output"].get("text", "")
+                
+                elif hasattr(self.gemini_client, 'models'):
                     # Client reale Google Gemini
                     response = self.gemini_client.models.generate_content(
                         model=model_name,
@@ -304,9 +386,6 @@ Rispondi ESCLUSIVAMENTE con un JSON che sia un ARRAY di oggetti. Formato esatto 
             except Exception as e:
                 error_msg = str(e)
                 if "503" in error_msg or "429" in error_msg or "UNAVAILABLE" in error_msg or "limit" in error_msg.lower():
-                    if "429" in error_msg or "exhausted" in error_msg.lower():
-                        gemini_rate_limiter.report_429()
-
                     if attempt < max_retries - 1:
                         delay = base_delay * (2 ** attempt)
                         self.logger.warning(f"Errore API temporaneo (503/429), ritento in {delay} secondi... ({e})")
@@ -365,12 +444,16 @@ class SceneDirector(BaseStage):
         # Carica variabili d'ambiente
         load_dotenv()
         
+        # Setup staging names from config
+        from src.common.config import get_config
+        cfg = get_config() # Already loaded or uses default path
+        
         super().__init__(
             stage_name="scene_director",
             stage_number=3,
-            input_queue="dias:queue:2:semantic_analysis",
-            output_queue="dias:queue:3:scene_director",
-            config=config_path,
+            input_queue=cfg.queues.semantic,
+            output_queue=cfg.queues.voice,
+            config=cfg,
         )
         self.persistence = DiasPersistence()
         self.logger = logger or logging.getLogger(__name__)
@@ -384,14 +467,10 @@ class SceneDirector(BaseStage):
             self.logger.info("🎭 Using Mock Gemini Client (MOCK_SERVICES=true)")
             self.gemini_client = MockGeminiClient(logger=self.logger)
         else:
-            # Retrieve Google Gemini API key from environment
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
-                self.logger.error("GOOGLE_API_KEY non trovata in .env")
-                # Fallback a mock se necessario o errore
-                self.gemini_client = MockGeminiClient(logger=self.logger)
-            else:
-                self.gemini_client = genai.Client(api_key=api_key)
+            self.logger.info("📡 Using ARIA Gateway v2.0 (MOCK_SERVICES=false)")
+            self.gemini_client = GatewayClient(redis_client=self.redis, client_id="dias")
+        
+        self.tracker = ActiveTaskTracker(self.redis, self.logger)
         
         # Inizializza TextDirector con il client (mock o reale)
         self.text_director = TextDirector(self.gemini_client, self.config, self.logger)
@@ -423,19 +502,22 @@ class SceneDirector(BaseStage):
     def _load_macro_analysis(self, book_id: str, block_id: str, analysis_id: str) -> Dict[str, Any]:
         """Carica analisi semantica da Stage B"""
         try:
-            # Cerca in stage_b/output - Cerca tutti i .json e verifica contenuto
+            # Cerca in stage_b/output - Cerca tutti i .json e verifica block_id internamente
             stage_b_path = self.persistence.base_path / "stage_b" / "output"
+            # Cerchiamo di ottimizzare basandoci sul filename se possibile, altrimenti scansione totale
             for file in stage_b_path.glob("*.json"):
                 try:
                     with open(file, 'r', encoding='utf-8') as f:
                         data = json.load(f)
-                        if data.get("book_id") == book_id and data.get("block_id") == block_id:
-                            # Trovato!
+                        if data.get("block_id") == block_id:
+                            # Trovato! 
+                            if data.get("book_id") != book_id:
+                                self.logger.info(f"Mapping book_id mismatch: {data.get('book_id')} -> {book_id}")
                             return data
                 except Exception:
                     continue
                     
-            raise FileNotFoundError(f"Analisi non trovata per book_id={book_id}, block_id={block_id}")
+            raise FileNotFoundError(f"Analisi non trovata per block_id={block_id} in {stage_b_path}")
                 
         except Exception as e:
             self.logger.error(f"Errore caricamento analisi: {e}")
@@ -445,6 +527,7 @@ class SceneDirector(BaseStage):
         """Carica blocco testo da Stage A"""
         try:
             stage_a_path = self.persistence.base_path / "stage_a" / "output"
+            self.logger.info(f"DEBUG: stage_a_path={stage_a_path}")
             for file in stage_a_path.glob("*.json"):
                 try:
                     with open(file, 'r', encoding='utf-8') as f:
@@ -634,6 +717,10 @@ class SceneDirector(BaseStage):
             "scene_label": dynamic_scene.get("scene_label", "unknown"),
             "text_content": dynamic_scene["clean_text"],
             "qwen3_instruct": dynamic_scene["qwen3_instruct"],
+            "speaker": dynamic_scene.get("speaker", None),
+            "pause_after_ms": dynamic_scene.get("pause_after_ms", 200),
+            "has_dialogue": dynamic_scene.get("has_dialogue", False),
+            "dialogue_notes": dynamic_scene.get("dialogue_notes", None),
             "fish_annotated_text": None,
             "tts_backend": "qwen3-tts-1.7b",
             "primary_emotion": primary_emotion,
@@ -657,9 +744,28 @@ class SceneDirector(BaseStage):
                 self.logger.error("Input validation failed")
                 return None
                 
-            book_id = item["book_id"]
+            # Coherence: Use normalized IDs from the message
+            raw_book_id = item.get("book_id", "unknown")
+            clean_title = item.get("clean_title") or self.persistence.normalize_id(raw_book_id)
+            book_id = clean_title  # Force book_id to be the canonical title
+            
             block_id = item["block_id"]
-            job_id = item.get("job_id") or item.get("analysis_id") or f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            # --- JOB ID PERSISTENCE ---
+            if not item.get("job_id"):
+                # Se non c'è, lo generiamo e lo salviamo nell'item originale
+                # Questo permette alla BaseStage di riaccodare lo stesso ID in caso di timeout
+                import hashlib
+                chunk_label_tmp = item.get("chunk_label") or f"chunk-{item.get('block_index', 0):03d}"
+                stable_id_str = f"{book_id}|{chunk_label_tmp}|stage_c"
+                job_hash = hashlib.sha256(stable_id_str.encode()).hexdigest()[:12]
+                item["job_id"] = f"job-{job_hash}"
+                self.logger.info(f"Persisting NEW stable job_id in Stage C item: {item['job_id']}")
+            else:
+                self.logger.info(f"Reusing EXISTING job_id in Stage C item: {item['job_id']}")
+                
+            job_id = item["job_id"]
+            # --------------------------
             
             # Carica dati necessari
             macro_analysis = self._load_macro_analysis(book_id, block_id, job_id)
@@ -670,13 +776,16 @@ class SceneDirector(BaseStage):
                 return None
 
             # --- SKIPPING LOGIC ---
-            clean_title = item.get("clean_title") or "".join([c if c.isalnum() else "-" for c in book_id]).strip("-")
             chunk_label = item.get("chunk_label") or f"chunk-{item.get('block_index', 0):03d}"
+            self.logger.info(f"DEBUG Stage C: processing {clean_title}-{chunk_label} (block_id={block_id}, job_id={job_id})")
+            
+            # Registry task ID for Stage C
+            registry_task_id = f"stage_c_{chunk_label}"
             
             # Check for Master Scene File
             existing_scenes_master = self.persistence.load_stage_output("c", clean_title, f"{chunk_label}-scenes")
             if existing_scenes_master:
-                self.logger.info(f"⏭️ Skipping Gemini: Master scene list già presente per {clean_title}-{chunk_label}")
+                self.logger.info(f"⏭️ Skipping Gemini: Master scene list già presente per {clean_title}-{chunk_label} (Registry: {registry_task_id})")
                 scene_scripts = existing_scenes_master.get("scenes", [])
                 
                 # Invia ogni scena caricata alla coda successiva SOLO se auto_push è attivo
@@ -688,6 +797,9 @@ class SceneDirector(BaseStage):
                     else:
                         self.logger.info(f"⏸️ Manual Gate (Skip Logic): Scene {scene_script['scene_id']} not pushed (AUTO_PUSH=false)")
                 
+                # Mark as Completed in Registry if it was skipped due to disk presence
+                self.tracker.mark_as_completed(book_id, registry_task_id, "disk_cache")
+
                 return {
                     "stage": self.STAGE_NAME,
                     "book_id": book_id,
@@ -698,6 +810,9 @@ class SceneDirector(BaseStage):
                 }
             # ----------------------
 
+            # Mark as In-Flight in Registry
+            self.tracker.mark_as_inflight(book_id, registry_task_id, f"global:callback:dias:job-{book_id}-{chunk_label}")
+
             # 1. Chiamata UNICA a Gemini per segmentazione e normalizzazione
             self.logger.info("🎬 Generazione scene dinamiche (Emotional Beats)...")
             block_analysis = macro_analysis.get("block_analysis", {})
@@ -707,13 +822,15 @@ class SceneDirector(BaseStage):
             dynamic_scenes = self.text_director.annotate_text_for_qwen3(
                 text_content, 
                 emotion=primary_emotion,
-                emotion_description=emotion_desc
+                emotion_description=emotion_desc,
+                book_id=book_id,
+                block_id=block_id,
+                job_id=job_id  # Pass fixed job_id
             )
             
             # 2. Trasformazione in Scene Scripts validi per Stage D
             scene_scripts = []
-            clean_title = item.get("clean_title") or "".join([c if c.isalnum() else "-" for c in book_id]).strip("-")
-            chunk_label = item.get("chunk_label") or f"chunk-{item.get('block_index', 0):03d}"
+            # clean_title and chunk_label are already defined above and aligned
             
             for i, d_scene in enumerate(dynamic_scenes):
                 script = self._create_scene_script_dynamic(
@@ -725,18 +842,20 @@ class SceneDirector(BaseStage):
             master_output = {
                 "book_id": book_id,
                 "block_id": block_id,
-                "clean_title": clean_title,
                 "chunk_label": chunk_label,
-                "scenes_count": len(scene_scripts),
                 "scenes": scene_scripts,
+                "job_id": job_id,
                 "processing_timestamp": datetime.now().isoformat()
             }
-            self.persistence.save_stage_output(
+            output_file = self.persistence.save_stage_output(
                 self.STAGE_NAME, 
                 master_output, 
                 clean_title, 
                 f"{chunk_label}-scenes"
             )
+            
+            # Mark as Completed in Registry
+            self.tracker.mark_as_completed(book_id, registry_task_id, output_file)
 
             # 3. Handle Output Pushing (Gatekeeper logic)
             auto_push = os.getenv("AUTO_PUSH_TO_STAGE_D", "false").lower() == "true"
@@ -772,14 +891,14 @@ class SceneDirector(BaseStage):
             }
             
         except Exception as e:
-            self.logger.error(f"Errore processing Stage C: {e}")
+            self.logger.error(f"Errore processing Stage C (process_item): {e}")
             import traceback
             self.logger.error(traceback.format_exc())
-            return None
+            raise # Rilancia per la Pausa Globale in BaseStage
             
         except Exception as e:
-            self.logger.error(f"Errore processing Stage C: {e}")
-            return None
+            self.logger.error(f"Errore processing Stage C (process_item fallback): {e}")
+            raise # Rilancia
 
     def process(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -800,14 +919,10 @@ class SceneDirector(BaseStage):
             result = self.process_item(message)
             if result:
                 self.logger.info(f"Stage C completato: {result['scenes_count']} scene generate")
-                return result
-            else:
-                self.logger.error("Stage C fallito")
-                return {"error": "Stage C processing failed"}
-                
+            return result
         except Exception as e:
-            self.logger.error(f"Errore in Stage C process: {e}")
-            return {"error": str(e)}
+            self.logger.error(f"Error in process wrapper: {e}")
+            raise # Rilancia per BaseStage.run
 
 
 def main():
@@ -826,7 +941,8 @@ def main():
         os.environ["MOCK_SERVICES"] = "true"
         
     # Setup logging
-    logger = logging.getLogger(__name__)
+    from src.common.logging_setup import get_logger
+    logger = get_logger("scene_director")
     logger.info("🎬 Starting DIAS Stage C - Scene Director")
     
     try:

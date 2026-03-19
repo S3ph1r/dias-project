@@ -20,15 +20,17 @@ Questo documento chiarisce la separazione netta tra il **Cervello (DIAS)** e il 
 
 ---
 
-## 2. Il Flusso di Comunicazione "Handshake"
+## 2. Il Flusso di Comunicazione "Universal Bus"
 
-Quando DIAS (Stage D) ha bisogno di una voce:
+Quando DIAS (Stage B/C/D) ha bisogno di un'inferenza (Cloud o Locale):
 
-1.  **DIAS PUSH**: DIAS scrive sul *suo* registro: `scene-01: IN_FLIGHT`. Poi invia il payload a Redis.
-2.  **ARIA RECEIVE**: ARIA pesca il task. Scrive sul *suo* registro globale: `task-XYZ: PROCESSING (Client: DIAS, Type: TTS)`.
-3.  **ARIA WORK**: ARIA genera il audio. Se il file esiste già (Idempotenza), salta il calcolo.
-4.  **ARIA CALLBACK**: ARIA scrive il risultato sulla `callback_key` fornita da DIAS. Marca il suo task come `DONE`.
-5.  **DIAS ACK**: DIAS riceve la callback, scarica l'URL del file, e marca il suo registro come `scene-01: COMPLETED`.
+1.  **DIAS PUSH**: DIAS invia il task tramite il `GatewayClient` alla coda Redis standard.
+    - Per **TTS**: `gpu:queue:tts:qwen3-tts-1.7b`
+    - Per **Cloud (Gemini)**: `global:queue:cloud:google:gemini-flash-lite-latest:dias`
+2.  **ARIA RECEIVE**: L'Orchestratore (o il `CloudManager`) pesca il task.
+3.  **ARIA WORK**: ARIA esegue l'inferenza (locale su GPU o remota via SDK Google).
+4.  **ARIA CALLBACK**: ARIA invia la conferma a DIAS sulla `callback_key` specifica (`global:callback:dias:{job_id}`).
+5.  **DIAS MONITOR**: DIAS riceve il risultato e prosegue.
 
 ---
 
@@ -59,3 +61,6 @@ Quando DIAS (Stage D) ha bisogno di una voce:
 - Se aggiungi una **nuova App**: ARIA non deve essere modificata. La nuova app invia un task, ARIA lo esegue, la nuova app riceve la risposta.
 
 **Ti senti più "ordinato" con questa divisione? DIAS è la gestione del Libro, ARIA è la gestione della GPU. Redis è il ponte neutro.**
+
+---
+*Architettura validata e implementata con successo (Marzo 2026)*

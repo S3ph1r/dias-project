@@ -37,22 +37,26 @@ Ogni campo dell'hash sarà un `task_id` (es. `scene-001`), e il valore un JSON c
 
 ---
 
-## 3. Logica di Decisione (Pseudo-algoritmo)
+Quando DIAS (Stage B/C/D) ha bisogno di un'inferenza (Cloud o Locale):
+DIAS opera come un **Dumb Client**: non possiede API Key e non gestisce il rate limiting. Delega tutto ad ARIA.
 
-Quando uno stadio (es. Stage D) deve processare una scena:
+## 3. Logica di Decisione (Implementata in Stage B, C, D)
 
-1.  **CHECK FISICO**: Esiste `/data/stage_d/output/scene-005.json`?
-    - ✅ **SÌ**: Il task è finito. Aggiorna Registro a `COMPLETED` e passa oltre.
+1.  **CHECK FISICO (Local & Remote Skip)**:
+    - Esiste `/data/stage_d/output/scene-005.json` localmente?
+    - Se no, ARIA ha già il file? Check `HTTP HEAD http://aria-ip:8082/{descriptive_id}.wav`.
+    - ✅ **SÌ**: Il task è già stato processato in precedenza. Recupera metadata, aggiorna Registro a `COMPLETED` e passa oltre.
 2.  **CHECK REGISTRO**:
     - Se stato è `COMPLETED` ma il file manca (anomalia): Forza rigenerazione → Stato `PENDING`.
     - Se stato è `IN_FLIGHT`:
         - Controlla `updated_at`. Se è passato > 30 min (Zombie Task):  
           Marca come `PENDING` e riaccoda.
-        - Se è recente: **NON ACCARE**. Mettiti solo in ascolto sulla `callback_key`.
-3.  **INVIO E LOCK**:
+        - Se è recente: **NON TOCCARE**. Mettiti solo in ascolto sulla `callback_key`.
+3.  **INVIO E LOCK (Naming Coherence)**:
     - Se stato è `PENDING`:
-        - Aggiorna registro a `IN_FLIGHT` (con timestamp attuale).
-        - Invia il task alla coda Redis di ARIA.
+        - Genera un `job_id` descrittivo: `{book}-{chunk}-{scene}`.
+        - Aggiorna registro a `IN_FLIGHT`.
+        - Invia il task alla coda di ARIA.
         - Entra in ascolto della callback.
 
 ---

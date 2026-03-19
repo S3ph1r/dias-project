@@ -19,13 +19,38 @@ class DateTimeEncoder(json.JSONEncoder):
 class DiasPersistence:
     """Gestore persistenza file-based per DIAS"""
     
-    def __init__(self, base_path: str = "/home/Projects/NH-Mini/sviluppi/dias/data"):
-        self.base_path = Path(base_path)
+    def __init__(self, base_path: Optional[str] = None):
+        if base_path:
+            self.base_path = Path(base_path)
+        else:
+            # 1. Cerca variabile d'ambiente
+            env_path = os.environ.get("DIAS_DATA_DIR")
+            if env_path:
+                self.base_path = Path(env_path)
+            else:
+                # 2. Default basato sulla posizione del file (root del progetto /data)
+                self.base_path = Path(__file__).parent.parent.parent / "data"
+        
         self.logger = logging.getLogger(__name__)
         
         # Crea struttura directory se non esiste
         self._ensure_directories()
-    
+
+    @staticmethod
+    def normalize_id(text: str) -> str:
+        """
+        Normalizza un titolo o ID per l'uso coerente nei nomi dei file.
+        Esempio: "Cronache del Silicio" -> "Cronache-del-Silicio"
+        """
+        if not text:
+            return "unknown"
+        # Sostituisce spazi e caratteri non alfanumerici con hyphens
+        normalized = "".join([c if c.isalnum() else "-" for c in text])
+        # Rimuove hyphens duplicati e pulisce estremità
+        import re
+        normalized = re.sub(r'-+', '-', normalized).strip("-")
+        return normalized
+
     def _ensure_directories(self):
         """Assicura che tutte le directory esistano"""
         dirs = [
@@ -71,6 +96,9 @@ class DiasPersistence:
         """Salva output di uno stage"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
+        # Coherence: Force normalization on book_id (which is our project title)
+        book_id = self.normalize_id(book_id)
+        
         components = [book_id]
         if block_id:
             components.append(block_id)
@@ -87,7 +115,7 @@ class DiasPersistence:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
             
-            self.logger.info(f"✅ Salvato output Stage {stage}: {filepath}")
+            self.logger.info(f"✅ Salvato output Stage {stage} (Coerenza): {filepath}")
             return str(filepath)
             
         except Exception as e:

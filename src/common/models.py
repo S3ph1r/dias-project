@@ -17,31 +17,13 @@ from pydantic import BaseModel, Field, field_validator
 
 # --- Enums ---
 
-class PrimaryEmotion(str, Enum):
-    NEUTRO = "neutro"
-    GIOIA = "gioia"
-    TRISTEZZA = "tristezza"
-    RABBIA = "rabbia"
-    PAURA = "paura"
-    TENSIONE = "tensione"
-    CURIOSITA = "curiosita"
-    RELAX = "relax"
-    MELANCONIA = "melanconia"
-    STUPORE = "stupore"
-    DETERMINAZIONE = "determinazione"
-    ANSIA = "ansia"
-    NOSTALGIA = "nostalgia"
-    PREOCCUPAZIONE = "preoccupazione"
-    SPERANZA = "speranza"
-    CONFUSIONE = "confusione"
-    SOLITUDINE = "solitudine"
-    ECCITAZIONE = "eccitazione"
-    ISOLAMENTO = "isolamento"
-    MISTERO = "mistero"
-    ATTESA = "attesa"
-    FRUSTRAZIONE = "frustrazione"
-    RANCORE = "rancore"
-    MALINCONIA = "malinconia"
+class TaskStatus(str, Enum):
+    """Stati possibili di un task nel Master Registry."""
+    PENDING = "PENDING"
+    IN_FLIGHT = "IN_FLIGHT"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    TIMEOUT = "TIMEOUT"
 
 
 # --- Stadio A: Ingestion Output ---
@@ -88,11 +70,17 @@ class BlockAnalysis(BaseModel):
     valence: float = Field(ge=0.0, le=1.0)
     arousal: float = Field(ge=0.0, le=1.0)
     tension: float = Field(ge=0.0, le=1.0)
-    primary_emotion: PrimaryEmotion
+    primary_emotion: str = "neutro"
     secondary_emotion: Optional[str] = None
     setting: Optional[str] = None
     has_dialogue: bool = False
     audio_cues: List[str] = Field(default_factory=list)
+
+    @field_validator("primary_emotion", mode="before")
+    @classmethod
+    def validate_emotion(cls, v):
+        if not v: return "neutro"
+        return str(v).lower()
 
 
 class SemanticEntity(BaseModel):
@@ -100,9 +88,16 @@ class SemanticEntity(BaseModel):
     entity_id: str
     text: str
     entity_type: str
-    emotional_tone: Optional[PrimaryEmotion] = PrimaryEmotion.NEUTRO
+    emotional_tone: str = "neutro"
     confidence: float = Field(ge=0.0, le=1.0)
+    speaking_style: Optional[str] = None  # Nota in inglese su come parla il personaggio (Stage B v2)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("emotional_tone", mode="before")
+    @classmethod
+    def validate_emotion(cls, v):
+        if not v: return "neutro"
+        return str(v).lower()
 
 
 class SemanticRelation(BaseModel):
@@ -119,8 +114,14 @@ class SemanticConcept(BaseModel):
     concept_id: str
     concept: str
     definition: str
-    emotional_tone: Optional[PrimaryEmotion] = PrimaryEmotion.NEUTRO
+    emotional_tone: str = "neutro"
     confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("emotional_tone", mode="before")
+    @classmethod
+    def validate_emotion(cls, v):
+        if not v: return "neutro"
+        return str(v).lower()
 
 
 class MacroAnalysisResult(BaseModel):
@@ -152,11 +153,17 @@ class ChapterAnalysis(BaseModel):
     avg_valence: float = Field(ge=0.0, le=1.0)
     avg_arousal: float = Field(ge=0.0, le=1.0)
     avg_tension: float = Field(ge=0.0, le=1.0)
-    dominant_emotion: PrimaryEmotion
+    dominant_emotion: str = "neutro"
     dominant_setting: Optional[str] = None
     all_audio_cues: List[str] = Field(default_factory=list)
     total_blocks: int = Field(ge=1)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @field_validator("dominant_emotion", mode="before")
+    @classmethod
+    def validate_emotion(cls, v):
+        if not v: return "neutro"
+        return str(v).lower()
 
 
 # --- Stadio C: SceneDirector Output ---
@@ -262,15 +269,6 @@ class SceneScript(BaseModel):
 
 
 # --- Master Registry ---
-
-class TaskStatus(str, Enum):
-    """Stati possibili di un task nel Master Registry."""
-    PENDING = "PENDING"
-    IN_FLIGHT = "IN_FLIGHT"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-    TIMEOUT = "TIMEOUT"
-
 
 class RegistryEntry(BaseModel):
     """Voce del Master Registry di DIAS per il tracciamento dei task."""

@@ -22,7 +22,6 @@ from .models import (
     Transitions,
     AudioLayers,
     SceneScript,
-    PrimaryEmotion,
 )
 
 __all__ = [
@@ -52,5 +51,4 @@ __all__ = [
     "Transitions",
     "AudioLayers",
     "SceneScript",
-    "PrimaryEmotion",
 ]

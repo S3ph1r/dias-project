@@ -13,7 +13,8 @@ import os
 import json
 import logging
 import time
-from typing import Dict, Optional, Any
+import requests
+from typing import Dict, Optional, Any, Tuple
 from datetime import datetime
 
 from src.common.base_stage import BaseStage
@@ -26,17 +27,20 @@ class StageDVoiceGeneratorProxy(BaseStage):
     """
     
     def __init__(self, redis_client=None, config=None):
+        print("DEBUG: StageDProxy.__init__ started")
         super().__init__(
             stage_name="stage_d_voice_gen",
             stage_number=4,
-            input_queue="dias:queue:4:voice_gen",
+            input_queue="dias:queue:4:voice",
             output_queue="dias:queue:5:music_gen",
             config=config,
             redis_client=redis_client
         )
         self.persistence = DiasPersistence()
         from src.common.registry import ActiveTaskTracker
+        print("DEBUG: ActiveTaskTracker imported")
         self.tracker = ActiveTaskTracker(self.redis, self.logger)
+        print("DEBUG: StageDProxy.__init__ completed")
         
         # Configurazione ARIA
         self.aria_tts_queue = "gpu:queue:tts:qwen3-tts-1.7b"
@@ -80,16 +84,50 @@ class StageDVoiceGeneratorProxy(BaseStage):
             chunk_label = message.get("chunk_label") or "chunk-000"
             unique_aria_job_id = f"{clean_title}-{chunk_label}-{scene_id}"
 
+            # --- REMOTE SKIP LOGIC (Coherence Check) ---
+            # Verifichiamo se l'asset esiste già sul PC Gaming (Orchestrator Asset Server :8082)
+            # Questo permette di saltare la generazione anche se Redis è vuoto o il registro è inconsistente.
+            aria_host = os.getenv("ARIA_HOST", "192.168.1.139")
+            aria_asset_port = os.getenv("ARIA_ASSET_PORT", "8082")
+            expected_url = f"http://{aria_host}:{aria_asset_port}/{unique_aria_job_id}.wav"
+            
+            self.logger.info(f"Checking for remote asset existence: {expected_url}")
+            try:
+                head_resp = requests.head(expected_url, timeout=5)
+                if head_resp.status_code == 200:
+                    self.logger.info(f"🎯 Remote Hit! Scena {unique_aria_job_id} già esistente su ARIA. Saltando task.")
+                    
+                    # Recupera durata se possibile dai visti (opzionale, o usiamo stimata)
+                    duration = message.get("timing_estimate", {}).get("estimated_duration_seconds", 0)
+                    
+                    # Aggiorna registro e ritorna successo immediato
+                    self.tracker.mark_as_completed(book_id, scene_id, expected_url)
+                    message["voice_path"] = expected_url
+                    message["voice_duration_seconds"] = duration
+                    message["voice_status"] = "completed"
+                    
+                    # Salva checkpoint locale
+                    self.persistence.save_stage_output("d", message, clean_title, chunk_label, scene_id)
+                    return message
+            except Exception as e:
+                self.logger.warning(f"Remote check fallito per {expected_url}: {e}")
+
             # Istruzione Stilistica Dinamica (Qwen3-TTS)
             default_instruct = "Warm Italian male voice, professional audiobook narrator."
             instruct = message.get("qwen3_instruct") or default_instruct
+            
+            # --- Configurazione Backend Dinamica (SOA v2.1) ---
+            # Compatibilità con chiavi tts_model_id (Registry) o tts_backend (Stage C)
+            target_model = message.get("tts_model_id") or message.get("tts_backend") or os.getenv("DEFAULT_TTS_MODEL_ID", "qwen3-tts-1.7b")
+            self.aria_tts_queue = f"gpu:queue:tts:{target_model}"
             
             aria_task = {
                 "job_id": unique_aria_job_id,
                 "client_id": "dias_pipeline",
                 "model_type": "tts",
-                "model_id": "qwen3-tts-1.7b",
+                "model_id": target_model,  # Passiamo il modello specifico ad ARIA
                 "payload": {
+                    "job_id": unique_aria_job_id,
                     "text": text_to_speak,
                     "voice_id": message.get("voice_id", "luca"),
                     "instruct": instruct,
@@ -98,7 +136,7 @@ class StageDVoiceGeneratorProxy(BaseStage):
                     "output_format": "wav"
                 },
                 "callback_key": callback_key,
-                "timeout_seconds": 300
+                "timeout_seconds": 600  # Timeout incrementato per swap modello JIT
             }
             
             # 3. Master Registry Check (Idempotency & Resilience)

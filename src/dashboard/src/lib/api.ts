@@ -22,18 +22,20 @@ export interface AriaNode {
     available_voices: string[];
 }
 
-const API_BASE = 'http://192.168.1.201:8000';
+const API_BASE = 'http://192.168.1.190:8000';
 
 export async function fetchProjects(): Promise<Project[]> {
     const res = await fetch(`${API_BASE}/projects`);
     if (!res.ok) throw new Error('Failed to fetch projects');
-    return res.json();
+    const data = await res.json();
+    return data.map((p: any) => ({ ...p, id: p.project_id || p.id }));
 }
 
 export async function fetchProjectDetails(id: string): Promise<Project> {
     const res = await fetch(`${API_BASE}/projects/${id}`);
     if (!res.ok) throw new Error('Failed to fetch project details');
-    return res.json();
+    const data = await res.json();
+    return { ...data, id: data.project_id || data.id };
 }
 
 export async function pushSceneToStageD(projectId: string, sceneFile: string, voiceOverride?: string): Promise<{ status: string; message: string }> {

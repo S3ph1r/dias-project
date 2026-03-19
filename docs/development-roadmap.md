@@ -1,8 +1,4 @@
-# 🎯 DIAS Development Roadmap
-
-> **Contesto**: Distributed Immersive Audiobook System - Pipeline distribuita per trasformare libri in audiolibri immersivi
->
-> **Stato**: Stage C in corso (25/32 chunk pronti) - Supporto Agnostico ARIA (Qwen3TTS attivo)
+> **Stato**: Stage A-D COMPLETATI - Validazione E2E su "Cronache del Silicio" (32 chunk) - In coda Voice (503 scene)
 
 ---
 
@@ -15,11 +11,10 @@
 - [x] **Fase 2**: Common Library M2 (config, Redis, models, BaseStage, logging, schemas, tests)
 - [x] **Fase 3**: Stage A - Text Ingester (✅ COMPLETATO - 32 blocchi)
 - [x] **Fase 4**: Stage B - Macro Analyzer (✅ COMPLETATO - 32 blocchi)
-- [/] **Fase 5**: Stage C - Scene Director (✅ 25/32 chunk pronti, 7 in attesa reset quota Gemini)
-- [x] **Fase 6**: Stage D - Voice Generator (✅ E2E validato via ARIA Proxy - Qwen3TTS attivo)
+- [x] **Fase 5**: Stage C - Scene Director (✅ COMPLETATO - 32/32 chunk validati)
+- [x] **Fase 6**: Stage D - Voice Generator (✅ COMPLETATO - 503 scene in coda Redis 120)
 
 ### 🚀 PROSSIMI STEP
-- [ ] Completamento Stage C (7 chunk mancanti - Reset Quota Gemini)
 - [ ] Batch Stage D (Generazione audio massiva su PC Gaming con Qwen3)
 - [ ] **Fase 7**: Stage E - Music Generator (AudioCraft MusicGen)
 - [ ] **Fase 8**: Stage F - Audio Mixer (FFmpeg)
