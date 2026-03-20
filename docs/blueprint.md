@@ -30,14 +30,15 @@ DIAS trasforma un manoscritto in un'esperienza audio immersiva, comportandosi co
 
 DIAS opera con un **Design Pattern "Agnostic Proxy"**: DIAS è il cervello (Brain), l'istanza ARIA remota è la "gola" e "l'orchestra" (GPU). DIAS concepisce i payload; ARIA esegue il calcolo neurale sui modelli (Qwen3, Fish, ecc). 
 
-**Architettura Sequenziale a 7 Stadi**:
+**Architettura Sequenziale a 8 Stadi** (v6.4 - Cinematic Soundscape):
 1.  **[A] TextIngester**: Estrazione da PDF/EPUB e chunking grezzo (CPU).
-2.  **[B] SemanticAnalyzer**: Analisi emotiva macro e marker narrativi (via ARIA Cloud Gateway).
-3.  **[C] SceneDirector**: Segmentazione dinamica per *Emotional Beats*, fonetica e script TTS agnostico (via ARIA Cloud Gateway).
-4.  **[D] VoiceGenProxy**: Impacchettamento payload e delega ad ARIA via code Redis. Nessuna esecuzione locale.
-5.  **[E] MusicGenerator**: Produzione colonna sonora adattiva all'emozione (via ARIA GPU).
-6.  **[F] AudioMixer**: Mixaggio stem voce/musica/sfx con ducking (FFmpeg, CPU).
-7.  **[G] MasteringEngine**: Finalizzazione MP3, metadati e Loudness -16 LUFS (CPU).
+2.  **[B] SemanticAnalyzer**: Analisi emotiva macro, speaking styles e marker narrativi (via ARIA Cloud Gateway).
+3.  **[B2] SoundDirector**: Analisi strutturale per il soundscape: individua i *Structural Anchors* (bridge musicali) e definisce la *Global Sound Palette* del capitolo (via ARIA Cloud Gateway). Stage dedicato, non integrato in B per preservare la qualità del prompt.
+4.  **[C] SceneDirector**: Segmentazione dinamica per *Emotional Beats*, fonetica e script TTS agnostico (via ARIA Cloud Gateway).
+5.  **[D] VoiceGenProxy**: Impacchettamento payload e delega ad ARIA via code Redis. Nessuna esecuzione locale.
+6.  **[E] MusicGenerator**: Produzione soundscape a tre livelli: Tappeto Atmosferico (Stem A), Leitmotif tematici (Stem B) e Sting per i Bridge (Stem C) (via ARIA GPU).
+7.  **[F] AudioMixer**: Mixaggio multi-stem voce/musica/sfx con ducking adattivo e sospensione voce per i Structural Anchors (FFmpeg, CPU).
+8.  **[G] MasteringEngine**: Finalizzazione MP3, metadati e Loudness -16 LUFS (CPU).
 
 ---
 
@@ -84,17 +85,27 @@ Lo Stage D non conosce l'infrastruttura di hosting dei modelli, ma decide quale 
 - **Resilienza e Timeout (Self-Healing)**: Se il PC ARIA è spento o il timeout scade, lo Stage D logga un errore. Grazie alla *Skipping Logic*, al riavvio del sistema il task verrà ri-accodato automaticamente.
 - **Persistenza Code**: I messaggi inviati ad ARIA rimangono nella coda Redis finché ARIA non li consuma, rendendo il sistema resiliente a spegnimenti temporanei dei lavoratori GPU.
 
-#### Stage E: Music Generator Proxy (La Colonna Sonora Agnostica)
-Lo Stage E applica la stessa filosofia di delega dello Stage D:
-- **Agnostic Music Proxy**: DIAS non genera musica localmente. Lo Stage E invia un payload alla coda `gpu:queue:music:musicgen-small` monitorata da ARIA.
-- **Input Narrativo (Stage B & C)**: I prompt musicali non sono casuali ma derivano dal profilo emotivo calcolato in **Stage B** (es. tensione, malinconia) e dalle durate esatte delle scene fissate in **Stage C**.
-- **Resilienza e Skipping**: Anche la musica segue la *Skipping Logic*. Se al riavvio della pipeline il file musicale per una scena è già presente su disco, lo stadio lo carica saltando la delega ad ARIA.
-- **Payload & Callback**: Utilizzerà un meccanismo di callback identico allo Stage D, garantendo che il Brain (DIAS) sappia esattamente quando ARIA ha terminato la composizione.
+#### Stage E: Music Generator Proxy (La Colonna Sonora Cinematica)
+Lo Stage E implementa un modello a **tre stem** per un soundscape cinematico:
+- **Stem A — Tappeto Atmosferico**: File lungo (~10 min/chunk), generato una volta per capitolo da `primary_emotion` + `setting` di Stage B. Crea il "pavimento" sonoro continuo.
+- **Stem B — Leitmotif**: Micro-stem (15-30s) associati a personaggi/luoghi specifici, inseriti nelle scene dove il personaggio è protagonista (da `entities` di Stage B).
+- **Stem C — Sting da Bridge**: File corti evocativi (3-8s) generati solo per i `structural_anchors` di **Stage B2** — i momenti dove la voce si sospende e la musica parla da sola.
+- **Agnostic Music Proxy**: Come Stage D, DIAS delega il calcolo ad ARIA via coda `gpu:queue:music:musicgen-small`.
+- **Resilienza e Skipping**: *Skipping Logic* garantisce che i file già generati non vengano riprocessati.
+- **→ Vedi [Sound Design Blueprint](./sound_design_blueprint.md) per la specifica completa.**
 
-#### Stage F/G: Mixing e Mastering (Post-Produzione)
-- **Intensity Curves**: Il MusicGen genera tappeti basati sull'emozione (es. `intensity_curve: [0.2, 0.3, 0.5]`).
-- **Mixaggio Sidechain (Ducking)**: Lo Stage F applica un *Sidechain Ducking* automatico tramite FFmpeg (`filter_complex`). Quando la voce interviene, la traccia musicale abbassa il gain (8-15dB) per garantire massima intelligibilità.
-- **Mastering Finale**: Normalizzazione a -16 LUFS e output MP3 320kbps costante.
+#### Stage B2: Sound Director (Analisi Strutturale Sonora)
+Stage dedicato (eseguito dopo B, prima di C) che usa un prompt LLM chirurgico per identificare i **Structural Anchors** — i punti dove la musica deve prendere il sopravvento sulla voce:
+- **Trigger types**: `chapter_boundary`, `chronos_shift`, `topos_shift`, `dramatic_pivot`, `emotional_reversal`.
+- **Regola di rarità**: Max 3-4 anchor per chunk (~2500 parole) per evitare la meccanicità.
+- **Output**: `structural_anchors[]` + `global_sound_palette` per Stage E/F.
+- **Separato da Stage B** per preservare la qualità del prompt semantico (Flash-Lite è sensibile al prompt overloading).
+
+#### Stage F/G: Mixing e Mastering (Post-Produzione Cinematica)
+- **Multi-Stem Mixing**: Voce + Stem A (Atmosfera) + Stem B (Leitmotif) + Stem C (Stings).
+- **Ducking Adattivo**: -20dB durante narrazione, -14dB durante pause, voce **sospesa** durante Structural Anchors.
+- **Silenzio come Strumento**: Fade a -30dB nei monologhi interni per massimizzare l'espressività.
+- **Mastering Finale**: Normalizzazione a -16 LUFS e output MP3 320kbps.
 
 ---
 

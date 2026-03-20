@@ -271,7 +271,15 @@ Rispondi ESCLUSIVAMENTE con un JSON ARRAY. Formato:
                 if match:
                     response_text = match.group(1)
 
-            scenes_list = json.loads(response_text)
+            try:
+                scenes_list = json.loads(response_text)
+            except json.JSONDecodeError as jde:
+                dump_path = "/home/Projects/NH-Mini/sviluppi/dias/logs/json_error_dump.txt"
+                with open(dump_path, "w", encoding="utf-8") as f:
+                    f.write(response_text)
+                self.logger.error(f"JSONDecodeError: Saved raw response to {dump_path}")
+                raise jde
+
             if not isinstance(scenes_list, list):
                 scenes_list = [scenes_list]
             

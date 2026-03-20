@@ -14,8 +14,13 @@ import json
 import logging
 import time
 import requests
+import sys
+from pathlib import Path
 from typing import Dict, Optional, Any, Tuple
 from datetime import datetime
+
+# Aggiungi il path root al Python path per trovare il modulo 'src'
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.common.base_stage import BaseStage
 from src.common.models import SceneScript, TTSBackend
@@ -101,7 +106,7 @@ class StageDVoiceGeneratorProxy(BaseStage):
                     duration = message.get("timing_estimate", {}).get("estimated_duration_seconds", 0)
                     
                     # Aggiorna registro e ritorna successo immediato
-                    self.tracker.mark_as_completed(book_id, scene_id, expected_url)
+                    self.tracker.mark_as_completed(book_id, unique_aria_job_id, expected_url)
                     message["voice_path"] = expected_url
                     message["voice_duration_seconds"] = duration
                     message["voice_status"] = "completed"
@@ -119,7 +124,10 @@ class StageDVoiceGeneratorProxy(BaseStage):
             # --- Configurazione Backend Dinamica (SOA v2.1) ---
             # Compatibilità con chiavi tts_model_id (Registry) o tts_backend (Stage C)
             target_model = message.get("tts_model_id") or message.get("tts_backend") or os.getenv("DEFAULT_TTS_MODEL_ID", "qwen3-tts-1.7b")
-            self.aria_tts_queue = f"gpu:queue:tts:{target_model}"
+            
+            # Align with ARIA Canonical Standard (SOA v2.1)
+            # Schema: global:queue:{model_type}:{provider}:{model_id}:{client_id}
+            self.aria_tts_queue = f"global:queue:tts:local:{target_model}:dias_pipeline"
             
             aria_task = {
                 "job_id": unique_aria_job_id,
@@ -140,19 +148,19 @@ class StageDVoiceGeneratorProxy(BaseStage):
             }
             
             # 3. Master Registry Check (Idempotency & Resilience)
-            if not self.tracker.is_task_ready_to_send(book_id, scene_id):
-                entry = self.tracker.get_entry(book_id, scene_id)
+            if not self.tracker.is_task_ready_to_send(book_id, unique_aria_job_id):
+                entry = self.tracker.get_entry(book_id, unique_aria_job_id)
                 if entry and entry.status == "COMPLETED":
-                    self.logger.info(f"Scena {scene_id} già completata nel registro. Recupero output rintracciabile.")
+                    self.logger.info(f"Scena {unique_aria_job_id} già completata nel registro. Recupero output rintracciabile.")
                     message["voice_path"] = entry.output_path
                     message["voice_duration_seconds"] = entry.metadata.get("duration_seconds", 0)
                     message["voice_status"] = "completed"
                     return message
                 
-                self.logger.info(f"Scena {scene_id} già in corso (IN_FLIGHT). Salto sottomissione ed entro in ascolto callback.")
+                self.logger.info(f"Scena {unique_aria_job_id} già in corso (IN_FLIGHT). Salto sottomissione ed entro in ascolto callback.")
             else:
-                self.logger.info(f"Sottomissione task TTS ad ARIA per scena {scene_id}")
-                self.tracker.mark_as_inflight(book_id, scene_id, callback_key)
+                self.logger.info(f"Sottomissione task TTS ad ARIA per scena {unique_aria_job_id}")
+                self.tracker.mark_as_inflight(book_id, unique_aria_job_id, callback_key)
                 self.redis.push_to_queue(self.aria_tts_queue, aria_task)
             
             # 4. Attesa Risultato (LPUSH + EXPIRE su ARIA side, BRPOP qui)
@@ -160,27 +168,27 @@ class StageDVoiceGeneratorProxy(BaseStage):
             result_raw = self.redis.consume_from_queue(callback_key, timeout=900)
             
             if not result_raw:
-                error_msg = f"Timeout attesa risultato ARIA per scena {scene_id}"
+                error_msg = f"Timeout attesa risultato ARIA per scena {unique_aria_job_id}"
                 self.logger.error(error_msg)
-                self.tracker.mark_as_failed(book_id, scene_id, error_msg)
+                self.tracker.mark_as_failed(book_id, unique_aria_job_id, error_msg)
                 return None
                 
             aria_result = result_raw
             if aria_result.get("status") != "done":
                 error_msg = f"Errore ARIA: {aria_result.get('error')}"
                 self.logger.error(error_msg)
-                self.tracker.mark_as_failed(book_id, scene_id, error_msg)
+                self.tracker.mark_as_failed(book_id, unique_aria_job_id, error_msg)
                 return None
             
             final_url = aria_result.get("output", {}).get("audio_url")
             duration = aria_result.get("output", {}).get("duration_seconds")
             
-            self.logger.info(f"Scena {scene_id} generata con successo: {final_url}")
+            self.logger.info(f"Scena {unique_aria_job_id} generata con successo: {final_url}")
             
             # 5. Aggiorna Master Registry e passa a Stage E
-            self.tracker.mark_as_completed(book_id, scene_id, final_url)
+            self.tracker.mark_as_completed(book_id, unique_aria_job_id, final_url)
             # Aggiorniamo anche i metadati nel registro
-            entry = self.tracker.get_entry(book_id, scene_id)
+            entry = self.tracker.get_entry(book_id, unique_aria_job_id)
             if entry:
                 entry.metadata["duration_seconds"] = duration
                 self.tracker.set_entry(book_id, entry)

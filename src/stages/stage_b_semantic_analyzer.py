@@ -16,6 +16,9 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 load_dotenv()
 
+# Aggiungi il path root al Python path per trovare il modulo 'src'
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 from src.stages.mock_gemini_client import MockGeminiClient
 from src.common.gateway_client import GatewayClient
 from src.common.base_stage import BaseStage

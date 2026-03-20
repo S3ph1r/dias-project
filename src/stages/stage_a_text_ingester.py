@@ -26,6 +26,12 @@ import nltk
 import spacy
 from tqdm import tqdm
 
+import sys
+from pathlib import Path
+
+# Aggiungi il path root al Python path per trovare il modulo 'src'
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 # Import common DIAS components
 from src.common.base_stage import BaseStage
 from src.common.redis_factory import get_redis_client
