@@ -185,21 +185,37 @@ class StageDVoiceGeneratorProxy(BaseStage):
             
             self.logger.info(f"Scena {unique_aria_job_id} generata con successo: {final_url}")
             
+            # --- LOCAL SYNC (DIAS Centrality) ---
+            # Scarica il file dal PC ARIA al filesystem locale del Brain
+            clean_title = message.get("clean_title") or "".join([c if c.isalnum() else "-" for c in book_id]).strip("-")
+            chunk_label = message.get("chunk_label") or "chunk-000"
+            
+            local_dir = self.persistence.base_dir / "data" / "stage_d" / "output" / clean_title / chunk_label
+            local_dir.mkdir(parents=True, exist_ok=True)
+            local_filename = f"{scene_id}.wav"
+            local_path = local_dir / local_filename
+            
+            self.logger.info(f"Scarico asset in locale: {local_path}")
+            if self._download_file(final_url, local_path):
+                self.logger.info(f"✅ Asset sincronizzato in locale: {local_path}")
+                final_path_for_registry = str(local_path)
+            else:
+                self.logger.warning(f"❌ Sincronizzazione fallita per {final_url}. Uso URL remoto come fallback.")
+                final_path_for_registry = final_url
+
             # 5. Aggiorna Master Registry e passa a Stage E
-            self.tracker.mark_as_completed(book_id, unique_aria_job_id, final_url)
+            self.tracker.mark_as_completed(book_id, unique_aria_job_id, final_path_for_registry)
             # Aggiorniamo anche i metadati nel registro
             entry = self.tracker.get_entry(book_id, unique_aria_job_id)
             if entry:
                 entry.metadata["duration_seconds"] = duration
                 self.tracker.set_entry(book_id, entry)
 
-            message["voice_path"] = final_url
+            message["voice_path"] = final_path_for_registry
             message["voice_duration_seconds"] = duration
             message["voice_status"] = "completed"
             
             # Salva checkpoint locale
-            clean_title = message.get("clean_title") or "".join([c if c.isalnum() else "-" for c in book_id]).strip("-")
-            chunk_label = message.get("chunk_label") or "chunk-000"
             self.persistence.save_stage_output("d", message, clean_title, chunk_label, scene_id)
             
             return message
@@ -207,6 +223,25 @@ class StageDVoiceGeneratorProxy(BaseStage):
         except Exception as e:
             self.logger.error(f"Errore nello Stage D Proxy: {e}", exc_info=True)
             return None
+
+    def _download_file(self, url: str, dest_path: Path) -> bool:
+        """
+        Scarica un file via HTTP con retry basico.
+        """
+        for attempt in range(3):
+            try:
+                response = requests.get(url, timeout=30, stream=True)
+                if response.status_code == 200:
+                    with open(dest_path, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    return True
+                else:
+                    self.logger.error(f"Download failed with status {response.status_code} for {url}")
+            except Exception as e:
+                self.logger.error(f"Attempt {attempt+1} failed for {url}: {e}")
+                time.sleep(2)
+        return False
 
 if __name__ == "__main__":
     stage = StageDVoiceGeneratorProxy()
