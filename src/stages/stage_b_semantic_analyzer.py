@@ -208,6 +208,12 @@ class StageBSemanticAnalyzer(BaseStage):
                            f"{len(semantic_analysis.relations)} relazioni, "
                            f"{len(semantic_analysis.concepts)} concetti")
             
+                        # Rate limit stabilization (10s delay to avoid Gemini Free RPM limit)
+            import time
+            delay = int(os.getenv('STAGE_B_STAGGER_DELAY', '10'))
+            self.logger.info(f'Sleeping for {delay}s for rate limit stabilization...')
+            time.sleep(delay)
+            
             return result
             
         except Exception as e:
