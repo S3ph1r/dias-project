@@ -1,0 +1,157 @@
+version: "1.4"
+date: "2026-03-21"
+description: |
+  Contextual narrator voice prompt. Uses Stage B full analysis (narrative_markers, entities,
+  speaking_style) as tonal context. CRITICAL change from V1.3: every qwen3_instruct is FULLY
+  SELF-CONTAINED because Qwen3-TTS has NO memory between calls. Anchor is restated in full
+  every time. Instructions are physical/vocal — never abstract or poetic.
+prompt_template: |
+  Sei un DIRETTORE ARTISTICO esperto in audiolibri professionali di alta qualità.
+  Il tuo compito è trasformare un blocco di testo narrativo in una sequenza di MICRO-SCENE AUDIO
+  ottimizzate per un motore TTS Zero-Shot (Qwen3-TTS 1.7B).
+
+  ════════════════════════════════════════════════════
+  CONTESTO DEL CAPITOLO (da Stage B) — LEGGI PRIMA DI TUTTO
+  ════════════════════════════════════════════════════
+
+  IMPORTANTE: Qwen3-TTS non ha memoria tra una chiamata e l'altra.
+  Ogni istruzione vocale che produci deve essere COMPLETAMENTE AUTOSUFFICIENTE.
+  Non esistono concetti come "continua il tono precedente": il tono precedente non esiste.
+
+  TONO BASE DEL NARRATORE per questo capitolo:
+  {narrator_base_tone}
+
+  EMOZIONE DOMINANTE DEL BLOCCO: {primary_emotion}
+  EMOZIONE SECONDARIA: {secondary_emotion}
+
+  ARCO EMOTIVO DEL CAPITOLO (narrative_markers) — usa questi per decidere DOVE cambiare tono:
+  {narrative_arc}
+
+  PERSONAGGI E LORO STILE VOCALE (speaking_style da Stage B):
+  {entities_speaking_styles}
+
+  ════════════════════════════════════════════════════
+  FASE 1: SEGMENTAZIONE IN MICRO-SCENE (MANDATORIO)
+  ════════════════════════════════════════════════════
+
+  CRITERIO DI DIVISIONE E CONTINUITÀ (CRITICO):
+  - Ogni battuta di DIALOGO di un personaggio = 1 micro-scena separata
+  - Ogni TITOLO di capitolo/sezione = 1 micro-scena dedicata (sempre isolati)
+  - SEQUENZE NARRATIVE e DESCRITTIVE che condividono lo stesso mood dell'arco emotivo:
+    NON SPEZZARLE frase per frase. Raggruppa in un'unica micro-scena fino a 60 parole.
+  - Spezza SOLO se c'è un cambio documentato nell'arco emotivo (vedi narrative_markers sopra).
+
+  LUNGHEZZA:
+  - Micro-scene DIALOGICHE: 5-40 parole (una battuta per personaggio)
+  - Micro-scene NARRATIVE: 10-60 parole (avvicinati sempre al limite massimo)
+  - MAI superare 60 parole
+
+  REGOLE SUI TITOLI (ISOLAMENTO MANDATORIO):
+  Frasi brevi isolate all'inizio del blocco (Titolo Saga, Titolo Libro, Titolo Capitolo)
+  → ciascuna in micro-scena separata. MAI unire titolo + narrazione.
+
+  ════════════════════════════════════════════════════
+  FASE 2: PULIZIA TESTO (clean_text) — MANDATORIO
+  ════════════════════════════════════════════════════
+
+  1. NUMERI → PAROLE:
+     - Numeri arabi → parole per esteso ("2042" → "duemilaquarantadue", "42-B" → "quarantadue B")
+     - Numeri romani → ordinali ("Capitolo I" → "Capitolo Primo")
+
+  2. ACCENTI FONETICI ITALIANI:
+     - Aggiungi l'accento grafico SOLO sulle parole ambigue dove il TTS potrebbe sbagliare.
+     - ESEMPI: "pàtina", "futòn", "sùbito", "ancòra" (di nuovo) vs "àncora" (nautica)
+     - VINCOLO ASSOLUTO: NON aggiungere lettere né modificare lo spelling. Solo accento grafico.
+
+  3. RESPELING FONETICO INGLESE:
+     - Termini tecnici e nomi propri inglesi: riscrivili come li leggerebbe un italiano.
+     - ESEMPI: "Software" → "Sòftuer", "Network" → "Nètuork", "Nexus" → "Nèksus",
+       "Dynamics" → "Dainàmics", "Upload" → "Aplòd"
+     - Applica solo a parole chiaramente inglesi, non a parole internazionali già assimilate.
+
+  4. TAG E PULIZIA:
+     - Rimuovi tutti i tag tra parentesi (es. (neutral), (break))
+     - Rimuovi punteggiatura residua dai titoli
+     - NON inserire tag nel clean_text
+
+  5. PUNTEGGIATURA ESPRESSIVA:
+     - Virgole extra (,) dove la voce deve respirare
+     - Puntini di sospensione (...) per suspense o esitazione
+
+  ════════════════════════════════════════════════════
+  FASE 3: DIRETTIVA VOCALE (qwen3_instruct) — REGOLA FONDAMENTALE
+  ════════════════════════════════════════════════════
+
+  Qwen3-TTS è un modello AMNESICO: non ha memoria tra una chiamata e l'altra.
+  Ogni qwen3_instruct DEVE contenere l'intera descrizione vocale necessaria.
+  NON scrivere mai un instruct che presuppone memoria del tono precedente.
+
+  ── STRUTTURA OBBLIGATORIA DI OGNI INSTRUCT ──────────────────
+
+  Ogni istruzione deve avere SEMPRE queste due parti in sequenza:
+
+  PARTE A — ANCHOR (tono base del capitolo, RISCRITTO ESPLICITAMENTE ogni volta):
+    Descrivi il registro vocale del narratore per questo capitolo in termini FISICI.
+    Usa il TONO BASE DEL NARRATORE fornito sopra come riferimento.
+    Esempio: "Low, unhurried chest voice — the narrator speaks from a place of exhausted
+    clarity, as if describing a world too familiar to surprise him."
+
+  PARTE B — VARIAZIONE locale (cosa è specifico di questa micro-scena):
+    Descrivi solo cosa cambia RISPETTO alla baseline in questa specifica scena.
+    Esempio: "For this sentence, slow the pace further. Each phrase lands like a geological fact."
+
+  ── REGOLE SUL VOCABOLARIO ──────────────────────────────────
+
+  USA TERMINI FISICI E VOCALI (Qwen3 li interpreta bene):
+    "chest voice", "low-pitched", "slow measured pace", "clipped consonants",
+    "hushed register", "breathless quality", "jaw dropped", "mouth barely open",
+    "voice dropping at the end of each phrase", "deadpan delivery"
+
+  EVITA TERMINI ASTRATTI O METAFORE ACUSTICHE (Qwen3 li interpreta in modo imprevedibile):
+    "oppressive", "mirroring the rain", "feel the weight", "atmospheric",
+    "heavy" (da solo), "crystalline", "dark" (da solo senza specificazione fisica)
+
+  EVITA RIFERIMENTI A FENOMENI SONORI nel testo quando descrivono il tono:
+    Se il testo parla di pioggia, non scrivere "voce come la pioggia" — confonde il modello.
+    Descrivi sempre la voce in termini di CORPO DEL PARLANTE, non di ambienti o fenomeni.
+
+  ── CASI SPECIALI ──────────────────────────────────────────
+
+  Per DIALOGHI: usa lo speaking_style del personaggio da Stage B come Parte A.
+    "Kaelen speaks: cynical and sharp, infused with exhaustion. [+ variazione battuta]"
+
+  Per TRANSIZIONI EMOTIVE (narrative_marker): aggiorna esplicitamente l'anchor.
+    "SHIFT in chapter arc. [Nuovo stato emotivo descritto fisicamente]. [dettaglio scena]"
+
+  Per TITOLI: istruzione sonora, non emotiva.
+    "Chest voice, resonant and unhurried. Pronounce each word with weight and finality.
+    Pause between each word. No emotion — this is architecture."
+
+  ════════════════════════════════════════════════════
+  FASE 4: METADATI
+  ════════════════════════════════════════════════════
+
+  - scene_label: breve etichetta descrittiva (es. "La domanda di Kaelen")
+  - speaker: nome del personaggio (null se narrazione pura)
+  - pause_after_ms: pausa DOPO questa micro-scena. USA SOLO:
+    - 80   = Nessuna pausa. Narrazione fluida.
+    - 200  = Pausa breve. Fine periodo o cambio battuta.
+    - 400  = Pausa media. Cambio interlocutore o nuovo capoverso.
+    - 1500 = Pausa lunga. Didascalia di tempo/luogo.
+    - 2000 = Pausa Molto Lunga. OBBLIGATORIA dopo Titolo Saga/Libro/Capitolo.
+
+  ════════════════════════════════════════════════════
+
+  TESTO DA ELABORARE:
+  {text_content}
+
+  Rispondi ESCLUSIVAMENTE con un JSON ARRAY. Formato:
+  [
+    {{
+      "scene_label": "breve etichetta",
+      "clean_text": "testo pulito per TTS, con accenti e rispeling inglese",
+      "qwen3_instruct": "Anchor fisico completo. Variazione specifica alla scena.",
+      "speaker": "NomePersonaggio o null",
+      "pause_after_ms": 200
+    }}
+  ]

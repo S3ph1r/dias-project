@@ -47,11 +47,8 @@ class StageDVoiceGeneratorProxy(BaseStage):
         self.tracker = ActiveTaskTracker(self.redis, self.logger)
         print("DEBUG: StageDProxy.__init__ completed")
         
-        # Configurazione ARIA
-        self.aria_tts_queue = "gpu:queue:tts:qwen3-tts-1.7b"
-        self.enable_dynamic_params = os.getenv("ENABLE_DYNAMIC_PARAMS", "false").lower() == "true"
-        
         # Reference fisso per narratore (da documentazione ARIA)
+        # Nota: Questi potrebbero anche essere esternalizzati in futuro
         self.voice_ref_text = "Leggi la Bibbia, Brett? E allora ascolta questo passo che conosco a memoria, è perfetto per l'occasione: Ezechiele 25:17. Il cammino dell'uomo timorato è minacciato da ogni parte dalle iniquità degli esseri egoisti e dalla tirannia degli uomini malvagi. Benedetto sia colui che nel nome della carità e della buona volontà conduce i deboli attraverso la valle"
         self.voice_ref_path = "C:\\Users\\Roberto\\aria\\data\\voices\\narratore.wav"
 
@@ -117,14 +114,34 @@ class StageDVoiceGeneratorProxy(BaseStage):
             except Exception as e:
                 self.logger.warning(f"Remote check fallito per {expected_url}: {e}")
 
-            # Istruzione Stilistica Dinamica (Qwen3-TTS)
-            default_instruct = "Warm Italian male voice, professional audiobook narrator."
-            instruct = message.get("qwen3_instruct") or default_instruct
-            
             # --- Configurazione Backend Dinamica (SOA v2.1) ---
-            # Compatibilità con chiavi tts_model_id (Registry) o tts_backend (Stage C)
-            target_model = message.get("tts_model_id") or message.get("tts_backend") or os.getenv("DEFAULT_TTS_MODEL_ID", "qwen3-tts-1.7b")
+            target_model = message.get("tts_model_id") or message.get("tts_backend") or self.config.models.active_tts_backend
             
+            # Recupera i default dal config in base al backend scelto
+            backend_cfg = None
+            if "qwen3" in target_model.lower():
+                backend_cfg = self.config.models.qwen3_tts
+            elif "fish" in target_model.lower():
+                backend_cfg = self.config.models.fish_s1_mini
+            
+            # Parametri tecnici
+            if backend_cfg:
+                default_voice = backend_cfg.default_voice
+                default_instruct = backend_cfg.default_instruct
+                default_temp = backend_cfg.default_temperature
+                default_top_p = backend_cfg.default_top_p
+            else:
+                default_voice = "luca"
+                default_instruct = "Professional Italian narrator."
+                default_temp = 0.5
+                default_top_p = 0.9
+
+            # Override da messaggio (Stage C) o da Config
+            instruct = message.get("qwen3_instruct") or default_instruct
+            voice_id = message.get("voice_id") or default_voice
+            temp = message.get("temperature") or default_temp
+            top_p = message.get("top_p") or default_top_p
+
             # Align with ARIA Canonical Standard (SOA v2.1)
             # Schema: global:queue:{model_type}:{provider}:{model_id}:{client_id}
             self.aria_tts_queue = f"global:queue:tts:local:{target_model}:dias_pipeline"
@@ -133,18 +150,18 @@ class StageDVoiceGeneratorProxy(BaseStage):
                 "job_id": unique_aria_job_id,
                 "client_id": "dias_pipeline",
                 "model_type": "tts",
-                "model_id": target_model,  # Passiamo il modello specifico ad ARIA
+                "model_id": target_model,
                 "payload": {
                     "job_id": unique_aria_job_id,
                     "text": text_to_speak,
-                    "voice_id": message.get("voice_id", "luca"),
+                    "voice_id": voice_id,
                     "instruct": instruct,
                     "temperature": temp,
                     "top_p": top_p,
                     "output_format": "wav"
                 },
                 "callback_key": callback_key,
-                "timeout_seconds": 600  # Timeout incrementato per swap modello JIT
+                "timeout_seconds": 600
             }
             
             # 3. Master Registry Check (Idempotency & Resilience)

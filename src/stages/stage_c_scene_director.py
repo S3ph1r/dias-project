@@ -93,13 +93,25 @@ class TextDirector:
         self.config = config
         self.logger = logger
 
-    def annotate_text_for_qwen3(self, text_content: str, emotion: str, emotion_description: str, book_id: str, block_id: str, job_id: Optional[str] = None) -> List[dict]:
+    def annotate_text_for_qwen3(
+        self,
+        text_content: str,
+        emotion: str,
+        emotion_description: str,
+        book_id: str,
+        block_id: str,
+        job_id: Optional[str] = None,
+        macro_analysis: Optional[Dict] = None,
+    ) -> List[dict]:
         """
         Chiama Gemini per produrre output compatibile con Qwen3-TTS:
         - Suddivisione in SCENE basata su cambi di tono (Emotional Beats).
         - Testo PULITO (senza tag fish, senza return capo).
         - Conversione NUMERI in PAROLE per esteso (es. 2042 -> duemilaquarantadue).
-        - Campo qwen3_instruct: istruzione stile in inglese.
+        - Campo qwen3_instruct: istruzione stile in inglese, autosufficiente (V1.4+).
+
+        Args:
+            macro_analysis: Output completo di Stage B (utilizzato da V1.4+ per arricchire il prompt).
 
         Returns:
             Lista di dict con chiavi 'clean_text', 'qwen3_instruct', 'scene_id_suffix'
@@ -110,113 +122,80 @@ class TextDirector:
             EMOTION_TO_INSTRUCT_QWEN3["neutro"]
         )
 
-        prompt = f"""
-Sei un DIRETTORE ARTISTICO esperto in audiolibri professionali di alta qualità.
-Il tuo compito è trasformare un blocco di testo narrativo in una sequenza di MICRO-SCENE AUDIO (battute) ottimizzate per un motore TTS Zero-Shot (Qwen3-TTS 1.7B).
+        import yaml
+        
+        # Caricamento del nuovo prompt esternalizzato
+        prompt_path = getattr(self.config, "stage_c_prompt_path", "config/prompts/stage_c/v1.0_base.yaml")
+        prompt_full_path = Path(__file__).parent.parent.parent / prompt_path
+        
+        try:
+            with open(prompt_full_path, 'r', encoding='utf-8') as f:
+                prompt_data = yaml.safe_load(f)
+                template = prompt_data.get('prompt_template', '')
+                prompt_version = prompt_data.get('version', '1.0')
+        except Exception as e:
+            self.logger.error(f"Impossibile caricare il prompt {prompt_full_path}: {e}")
+            raise RuntimeError(f"PROMPT_LOAD_ERROR: {e}")
 
----------------------------------------------------------------
-FASE 1: SEGMENTAZIONE IN MICRO-SCENE (MANDATORIO)
----------------------------------------------------------------
+        # ── Costruzione dati di contesto Stage B (usati da prompt V1.4+) ──────
+        block_analysis = (macro_analysis or {}).get("block_analysis", {})
+        secondary_emotion = block_analysis.get("secondary_emotion", "")
 
-Dividi il testo in BATTUTE BREVI, seguendo queste regole:
+        # narrator_base_tone: derivato dalla primary_emotion e secondary_emotion
+        narrator_base_tone_map = {
+            "tensione":       "Low, unhurried chest voice. The narrator speaks with exhausted clarity — detached but not cold, like someone describing a world they know too well.",
+            "tristezza":      "Soft, low chest voice. Measured pace with slight weight on stressed syllables. No warmth — intimate but restrained.",
+            "gioia":          "Lighter chest voice, moderate pace. Slightly open mouth quality. Conversational but controlled.",
+            "paura":          "Hushed, tight chest voice. Short breath. Words clipped at the edges. Very slow.",
+            "rabbia":         "Clipped, low voice. Hard consonants. Fast but deliberate. Jaw barely moving.",
+            "curiosità":      "Slightly rising intonation at end of phrases. Mid-chest register. Moderate pace.",
+            "determinazione": "Chest voice, firm and forward. Consistent pace without hesitation. No emotional colour.",
+        }
+        narrator_base_tone = narrator_base_tone_map.get(
+            emotion.lower(),
+            "Low, unhurried chest voice. Measured and detached."
+        )
 
-CRITERIO DI DIVISIONE E CONTINUITÀ (CRITICO):
-- Ogni battuta di DIALOGO di un personaggio = 1 micro-scena separata
-- Ogni TITOLO di capitolo/sezione = 1 micro-scena dedicata (sempre isolati)
-- SEQUENZE NARRATIVE e DESCRITTIVE: Se hai un lungo blocco di descrizione continua (es. atmosfera, ambiente) che condivide lo stesso "mood", NON SPEZZARLO frase per frase. Raggruppa le frasi in un'unica micro-scena, sforzandoti di arrivare vicino al limite massimo di 60 parole.
-- Spezza una sequenza narrativa in due micro-scene SOLO se c'è un REALE cambio di azione, di focalizzazione o un capoverso molto netto.
+        # narrative_arc: formattato come lista leggibile da Gemini
+        narrative_markers = (macro_analysis or {}).get("narrative_markers", [])
+        if narrative_markers:
+            arc_lines = []
+            for nm in narrative_markers:
+                pos_pct = int(nm.get("relative_position", 0) * 100)
+                event = nm.get("event", "")
+                shift = nm.get("mood_shift", "")
+                arc_lines.append(f"  - At ~{pos_pct}%: {event} → Shift: {shift}")
+            narrative_arc = "\n".join(arc_lines)
+        else:
+            narrative_arc = f"  - Whole block: {emotion_description}"
 
-LUNGHEZZA:
-- Micro-scene DIALOGICHE: 5-40 parole (una battuta per personaggio)
-- Micro-scene NARRATIVE: 10-60 parole (massimizza l'uso delle 60 parole per evitare l'effetto "collage")
-- MAI superare 60 parole per micro-scena
-- Se una frase supera 60 parole, spezzala al punto o alla virgola più naturale, mantenendo però il tono coerente.
+        # entities_speaking_styles: formattato per Gemini
+        entities = (macro_analysis or {}).get("entities", [])
+        if entities:
+            ent_lines = []
+            for ent in entities:
+                name = ent.get("text", "?")
+                style = ent.get("speaking_style") or "(narrator default)"
+                role = ent.get("metadata", {}).get("role", "")
+                ent_lines.append(f"  - {name} ({role}): speaking_style = \"{style}\"")
+            entities_speaking_styles = "\n".join(ent_lines)
+        else:
+            entities_speaking_styles = "  - No named entities in this block."
 
-REGOLE GENERALI SUI TITOLI E SULLA STRUTTURA (ISOLAMENTO MANDATORIO):
-Analizza la struttura visiva del testo (ritorni a capo, frasi brevi isolate all'inizio).
-Se il blocco inizia con una o più frasi brevi isolate (sotto le 15 parole) separate dal corpo principale da doppi ritorni a capo (\n\n) che fungono da Titolo della Saga, Titolo del Libro, o Titolo_Numero del Capitolo, DEVI isolare OGNUNA di queste in una micro-scena singola e separata.
-- NON unire mai un titolo strutturale con il paragrafo narrativo (incipit) che lo segue.
+        # ── Sostituzione placeholder nel template ────────────────────────────
+        prompt = (
+            template
+            .replace("{emotion_description}", emotion_description)
+            .replace("{primary_emotion}", emotion)
+            .replace("{secondary_emotion}", secondary_emotion)
+            .replace("{narrator_base_tone}", narrator_base_tone)
+            .replace("{narrative_arc}", narrative_arc)
+            .replace("{entities_speaking_styles}", entities_speaking_styles)
+            .replace("{text_content}", text_content)
+        )
 
----------------------------------------------------------------
-FASE 2: PULIZIA TESTO (clean_text) — MANDATORIO
----------------------------------------------------------------
+        self.logger.info(f"Stage C prompt v{prompt_version} loaded. Context: {len(narrative_markers)} markers, {len(entities)} entities.")
 
-1. NUMERI → PAROLE:
-   - Converti TUTTI i numeri arabi in parole per esteso
-     (es. "2042" → "duemilaquarantadue", "42-B" → "quarantadue B")
-   - Converti numeri romani in ordinali
-     (es. "Capitolo I" → "Capitolo Primo")
-
-2. ACCENTI FONETICI ITALIANI:
-   - Aggiungi SEMPRE l'accento grafico sulle parole ambigue:
-     "pàtina", "futòn", "sùbito", "ancòra" (di nuovo) vs "àncora" (nautica),
-     "compìto" (cortese) vs "còmpito" (esercizio)
-   - Questo è CRITICO per la corretta pronuncia TTS.
-
-3. TAG E PULIZIA:
-   - Rimuovi tutti i tag tra parentesi (es. (neutral), (break))
-   - Rimuovi punteggiatura residua dai titoli (es. ":" alla fine)
-   - NON inserire nessun tag nel clean_text
-
-4. PUNTEGGIATURA ESPRESSIVA:
-   - Inserisci virgole extra (,) dove la voce deve respirare
-   - Usa puntini di sospensione (...) per suspense e esitazione
-   - Per i dialoghi: separa chiaramente le battute con virgole e trattini
-
----------------------------------------------------------------
-FASE 3: DIRETTIVA VOCALE PER MICRO-SCENA (qwen3_instruct)
----------------------------------------------------------------
-
-Qwen3-TTS è controllato da istruzioni in PROSA NATURALE in INGLESE.
-NON usare mai etichette rigide (es. "Tone: Dark. Rhythm: Slow.").
-
-Per ogni micro-scena scrivi 1-2 frasi in inglese che descrivano:
-- L'EMOZIONE PRECISA di quel momento (non generica)
-- Il PACING specifico (veloce? lento? con pause?)
-- Il REGISTRO VOCALE se è un dialogo (sussurro? grido? ironia?)
-
-QUALITÀ DELL'INSTRUCT E REGOLA DELLA COERENZA (CRITICO):
-- Sii SPECIFICO sul momento, non generico sulla scena
-- Per scene narrative consecutive che descrivono un momento fluido, MANTIENI LO STESSO TONO nell'instruct (es. usa istruzioni come "Continue narrating smoothly in the same descriptive tone"). NON cambiare radicalmente emozione da una frase all'altra se appartengono allo stesso contesto logico.
-- Cambia l'instruct in modo drastico SOLO quando c'è una svolta emotiva di trama reale.
-- Per i DIALOGHI: descrivi come parla quel PERSONAGGIO specifico ("Naila asks with bright curiosity, voice rising").
-- Per le RIVELAZIONI: descrivi l'arco emotivo ("Starts measured, then accelerates").
-- Per i TITOLI (Libro, Capitolo): "Read with quiet solemnity. Let the words land with weight."
-- Per l'Incipit di luogo/tempo (es. Anno 2042, Neo-Kyoto): "State the time and location clearly and matter-of-factly, like a factual report."
-- Non menzionare mai che si tratta di un audiolibro italiano nell'istruzione.
-
----------------------------------------------------------------
-FASE 4: METADATI
----------------------------------------------------------------
-
-- scene_label: breve etichetta descrittiva (es. "Naila's question", "Kaelen reveals the plan")
-- speaker: il nome del personaggio che parla (null se è narrazione pura)
-- pause_after_ms: pausa strutturale DOPO questa micro-scena da inserire in fase di mixaggio. UTILIZZA SOLO I SEGUENTI VALORI:
-  - 80 = Nessuna pausa. La narrazione o il dialogo continuano in modo fluido nella scena immediatamente successiva.
-  - 200 = Pausa breve. Fine periodo o leggero cambio di battuta nello stesso dialogo.
-  - 400 = Pausa media. Cambio di interlocutore o un nuovo capoverso.
-  - 1500 = Pausa lunga per Didascalie di tempo/luogo (es. dopo "Anno 2042, Neo-Kyoto.").
-  - 2000 = Pausa Molto Lunga. OBBLIGATORIA dopo un Titolo di Saga, Titolo di Libro, o Numero di Capitolo. Serve a staccare nettamente l'intestazione dalla narrazione che segue.
-
----------------------------------------------------------------
-
-EMOZIONE DI BASE del blocco (da Stage B): {emotion_description}
-
-TESTO DA ELABORARE:
-{text_content}
-
-Rispondi ESCLUSIVAMENTE con un JSON ARRAY. Formato:
-[
-  {{
-    "scene_label": "breve etichetta",
-    "clean_text": "testo pulito per TTS, con accenti e numeri convertiti",
-    "qwen3_instruct": "1-2 frasi in inglese, specifiche per questo momento",
-    "speaker": "NomePersonaggio o null",
-    "pause_after_ms": 200
-  }},
-  ...
-]
-"""
 
         # Applica pacing globale (30s) e verifica quota        # Rate limiting is managed centrally by ARIA.
         
@@ -833,7 +812,8 @@ class SceneDirector(BaseStage):
                 emotion_description=emotion_desc,
                 book_id=book_id,
                 block_id=block_id,
-                job_id=job_id  # Pass fixed job_id
+                job_id=job_id,
+                macro_analysis=macro_analysis,  # V1.4: full Stage B context
             )
             
             # 2. Trasformazione in Scene Scripts validi per Stage D

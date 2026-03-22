@@ -1,0 +1,508 @@
+[
+  {
+    "scene_label": "Titolo libro",
+    "clean_text": "Crònache del Silìcio",
+    "qwen3_instruct": "Announce the title with a sense of gravitas and mystery, slow pacing.",
+    "speaker": "null",
+    "pause_after_ms": 2000
+  },
+  {
+    "scene_label": "Sottotitolo libro",
+    "clean_text": "Lìbro Prìmo: L'Architètto dei Fantàsmi",
+    "qwen3_instruct": "Continue the solemn tone, slightly lower pitch for the subtitle.",
+    "speaker": "null",
+    "pause_after_ms": 2000
+  },
+  {
+    "scene_label": "Introduzione città",
+    "clean_text": "Si dìce che una città non sia fatta di cemento e lùce, ma di stòrie.",
+    "qwen3_instruct": "Narrate reflectively, establishing the philosophical foundation.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Neo-Kyoto descritta",
+    "clean_text": "Se così fòsse, Nèo-Kiòto, era un'antologìa infinìta, scrìtta in una lìngua che nessùno potèva più leggere per intero.",
+    "qwen3_instruct": "Maintain the reflective, somewhat melancholic narrative pace.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Strati della città",
+    "clean_text": "Era una città costrùita su stràti di àltre città, un palinsèsto di futùri sognàti e passàti dimenticàti.",
+    "qwen3_instruct": "Describe the layered complexity with a slightly faster, flowing rhythm.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Presente perpetuo",
+    "clean_text": "Vivèva in uno stàto di presènte perpetùo, illuminàta da un sòle artificiale, e lavàta da una piòggia che aveva il sàpore metallico del progrèsso.",
+    "qwen3_instruct": "Emphasize the artificiality of the environment, slightly colder tone.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Kaelen intro",
+    "clean_text": "E in questo presènte senza memòria, c'erano ùomini come Kàelen, ossessionàti dal tentatìvo di ricostrùire le pàgine stràppate.",
+    "qwen3_instruct": "Introduce the protagonist with a focused, determined undertone.",
+    "speaker": "null",
+    "pause_after_ms": 400
+  },
+  {
+    "scene_label": "Capitolo I",
+    "clean_text": "Capitòlo Prìmo: Il Rònzio della Stàtica",
+    "qwen3_instruct": "Announce the chapter title clearly and distinctly.",
+    "speaker": "null",
+    "pause_after_ms": 2000
+  },
+  {
+    "scene_label": "Data e luogo",
+    "clean_text": "Ànno Domìni duemìlaquarantadùe. Distrètto Supèriore di Kàmigyo, Nèo-Kiòto.",
+    "qwen3_instruct": "State the setting details with precise, almost technical clarity.",
+    "speaker": "null",
+    "pause_after_ms": 1500
+  },
+  {
+    "scene_label": "Pioggia e atmosfera",
+    "clean_text": "La piòggia non era un evènto; era l'atmosfèra.",
+    "qwen3_instruct": "Deliver this line with a sense of oppressive inevitability.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Pioggia descritta",
+    "clean_text": "Un vèlo costànte e àcido che sciivolava lùngo i fiànchi dei grattacièli-àghi, raccogliendo l'inquinamènto dei livèlli supèriori per depositarlo come una pàtina ùntuosa sulle stràde quarànta piàni più in bàsso.",
+    "qwen3_instruct": "Maintain the descriptive, slightly gritty tone, ensuring clear pronunciation of 'patina untuosa'.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Kaelen osserva",
+    "clean_text": "Da làssù, dall'appartamènto quarànta-bi del Complèsso 'Èthelred', Kàelen osservàva il mondo annegàre in una lùce al nèon diffùsa.",
+    "qwen3_instruct": "Shift focus to Kaelen, observing the scene with detachment.",
+    "speaker": "null",
+    "pause_after_ms": 200
+  },
+  {
+    "scene_label": "Appartamento come estensione",
+    "clean_text": "Il suo appartamènto era mèno un'abitazióne, e più un'estensióne del suo sistèma nervòso.",
+    "qwen3_instruct": "Narrate this observation with a sense of sterile intimacy.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Arredamento tecnologico",
+    "clean_text": "Non c'era un vèro arredamènto, sòlo ìsole di tecnologìa che emergevano da un oceàno di càvi neri e grigi.",
+    "qwen3_instruct": "Describe the sparse environment, emphasizing the technological elements.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Dettagli minimalisti",
+    "clean_text": "Un lètto bàsso, quasi un futòn, era relegàto in un àngolo, perennemènte sfàtto.",
+    "qwen3_instruct": "Maintain the detached observation, slightly trailing off on 'sfatto'.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Nutrizione e dissipatore",
+    "clean_text": "Un terminàle di nutrìzione automatizzàto ronzàva silenziòsamènte accanto a un dissipatòre di calòre, prènto a stampàre un pàsto nutrìente, ma insàpore.",
+    "qwen3_instruct": "Use a slightly monotonous tone for the description of the automated meal.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Il Nexus",
+    "clean_text": "Il rèsto dello spàzio era un santuàrio dedicàto al Nèksus, il suo sèrver privàto, un monolìte nero e silènzioso le cui lùci di stàto pulsàvano come un còre lènto e artificiale.",
+    "qwen3_instruct": "Describe the Nexus with reverence, ensuring clear pronunciation of 'Nexus'.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Ologramma anomalo",
+    "clean_text": "Le pàreti erano nùde, sàlvo per le òmbri danzànti proiettàte dagli schermi ologràfici, e per l'ùnica, ostìnata anomàlia in quel mondo di logìca frèdda.",
+    "qwen3_instruct": "Build slight tension towards the anomaly.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Elara ologramma",
+    "clean_text": "Un ologramma a grandèzza natùrale di Élara.",
+    "qwen3_instruct": "State the name 'Elara' clearly, with a hint of lingering affection.",
+    "speaker": "null",
+    "pause_after_ms": 1500
+  },
+  {
+    "scene_label": "Loop del ricordo",
+    "clean_text": "Era intrappolàto in un lùp di trè secondi, un frammènto di un ricòrdo che Kàelen non era riusciùto a cancellàre.",
+    "qwen3_instruct": "Narrate this with a sense of entrapment and obsession.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Il sorriso di Elara",
+    "clean_text": "Lei si voltàva, un sorrìso che le sbocciava sul vòlto, i càpelli che si sollevàvano leggermènte in una brèzza che non esistèva più.",
+    "qwen3_instruct": "Describe the memory tenderly, with a soft, almost wistful tone.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Gli occhi di Elara",
+    "clean_text": "I suoi òcchi, ànche nella loro riproduziòne spètrale, contenevano una scintìlla di anàrchia amòrevole, una lùce che sembràva sfidàre il mondo ordinàto che lui cercàva di costrùire.",
+    "qwen3_instruct": "Emphasize the 'spark of loving anarchy' with a slight increase in vocal energy.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Errore nel sistema",
+    "clean_text": "Era un bùg nel sistèma della sua vìta, un èrrore bellìssimo e intolleràbile.",
+    "qwen3_instruct": "Deliver this line with conflicted emotion: beauty versus intolerance.",
+    "speaker": "null",
+    "pause_after_ms": 200
+  },
+  {
+    "scene_label": "Progetto LifeLog",
+    "clean_text": "Il progeto a cui stava lavoràndo, il suo segreto erètico, portàva il nòme in còdice di Laif Lòg.",
+    "qwen3_instruct": "Introduce the project name 'LifeLog' phonetically adapted, maintaining tension.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Kaelen come ingegnere",
+    "clean_text": "Per i suoi datòri di lavòro alla Omni Sèncient Dìnàmics, O S D, Kàelen era sòlo un ingegnèro di mèdio livèllo, un vòlto anònimo in una legióne.",
+    "qwen3_instruct": "Describe Kaelen's cover identity with dry detachment. Pronounce 'Omni Sentient Dynamics' clearly.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Architetto di fantasmi",
+    "clean_text": "Ma lì, in quella cavèrna digitàle, era un architètto di fantàsmi.",
+    "qwen3_instruct": "Shift tone to emphasize his secret role, slightly dramatic.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Obiettivo eretico",
+    "clean_text": "Il suo obbiettìvo era una bestèmmia nell'èra delle memòrie digitàli a pagamènto e delle identità corporatìve, la creazióne di un archivio mnemonìco totàle, privàto e incorruttìbile.",
+    "qwen3_instruct": "Deliver the description of his goal with strong conviction, highlighting the forbidden nature.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Definizione dell'anima",
+    "clean_text": "Un'àlma fòrgiàta non da un dio, ma dalla sciia di dàti che una vìta si lasciava dietrò.",
+    "qwen3_instruct": "Conclude the objective description with a profound, lingering tone.",
+    "speaker": "null",
+    "pause_after_ms": 400
+  },
+  {
+    "scene_label": "Oracle interviene",
+    "clean_text": "\"Ancòra nessùn progrèsso, Kàelen.\"",
+    "qwen3_instruct": "Introduce Oracle's text-to-speech voice: emotionless, purely logical, slightly metallic inflection.",
+    "speaker": "Oracle",
+    "pause_after_ms": 400
+  },
+  {
+    "scene_label": "Voce di Oracle",
+    "clean_text": "La vòce non era una vòce. Era tèsto, càratteri ambràti che si componevano flùidamènte su un terminàle secòndario, l'ùnico spàzio non occupàto dal càos visìvo dei lòg di èrrore.",
+    "qwen3_instruct": "Narrate the nature of Oracle's communication, keeping the tone neutral and objective.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Oracle partner",
+    "clean_text": "Era Oràcle, un'istanza di calcolo logìco della OSD che Kàelen aveva \"liberàto\", recidèndo i suoi legàmi con la rète corporatìva, e trasfòrmandola nel suo silènzioso, socratìco pàrtner di laboratòrio.",
+    "qwen3_instruct": "Explain Oracle's origin simply, maintaining the logical register. Ensure 'Oracle' is pronounced clearly.",
+    "speaker": "null",
+    "pause_after_ms": 400
+  },
+  {
+    "scene_label": "Kaelen risponde",
+    "clean_text": "\"Vedo da mè,\" sibilò Kàelen, il sàpore amàro del càffè sintètico che gli impastàva la bòcca.",
+    "qwen3_instruct": "Kaelen responds sharply, irritated, his voice slightly strained.",
+    "speaker": "Kaelen",
+    "pause_after_ms": 200
+  },
+  {
+    "scene_label": "Diagramma fallito",
+    "clean_text": "Sullo schèrmo princiàle, il diagramma del suo \"Cònduit\" era una testimoniànza di fallimènto.",
+    "qwen3_instruct": "Describe the visual evidence of failure with a tone of frustration.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Agente Collettore",
+    "clean_text": "I pàccheti di dàti, i frammènti-mnème, arrivàvano regolarmente dal suo \"Agènte Collettòre\", un piccòlo dispòsitivo che portàva nascosto nel risvòlto della giàcca, che catturàva l'àudio ambièntale e i dàti di posiziòne della sua vìta.",
+    "qwen3_instruct": "Detail the function of the 'Collector Agent' clearly, maintaining focus on the data flow. Pronounce 'Agent Collector' clearly.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Rigetto dei frammenti",
+    "clean_text": "Ma ogni frammènto, nell'istànte in cui raggiungeva il portàle di decrittazióne del Nèksus, venìva rigettàto.",
+    "qwen3_instruct": "Increase the pace slightly to convey the repetitive failure.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Log di errore",
+    "clean_text": "Il lòg scorreva, un fiume nìero di disperazióne, ripetèndo la stèssa litanìa:",
+    "qwen3_instruct": "Narrate the log reading with growing weariness.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Errore ripetuto 1",
+    "clean_text": "[SAUL STRÌM CORRÙPTED: MÙV ÀTOM NOT FÒUND]",
+    "qwen3_instruct": "Read the error code slowly, emphasizing 'Corrupted' and 'Not Found'. Adapt 'SoulStream' and 'Moov Atom' phonetically.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Errore ripetuto 2",
+    "clean_text": "[SAUL STRÌM CORRÙPTED: MÙV ÀTOM NOT FÒUND]",
+    "qwen3_instruct": "Repeat the error, slightly more flatly.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Errore ripetuto 3",
+    "clean_text": "[SAUL STRÌM CORRÙPTED: MÙV ÀTOM NOT FÒUND]",
+    "qwen3_instruct": "Final repetition, conveying deep frustration.",
+    "speaker": "null",
+    "pause_after_ms": 200
+  },
+  {
+    "scene_label": "Anima infranta",
+    "clean_text": "L'àlma del dàto era infrànta.",
+    "qwen3_instruct": "A short, impactful statement about the failure.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Definizione Moov Atom",
+    "clean_text": "Il 'mùv àtom' era una pàrte fondamèntale di un file multimediale, il suo ìndice, la sua màppa.",
+    "qwen3_instruct": "Explain the technical term 'moov atom' with educational clarity.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Rumore bianco",
+    "clean_text": "Senza di èsso, il file era sùlo rumòre biànco, un sussùrro senza bòcca.",
+    "qwen3_instruct": "Contrast the technical explanation with the poetic result of failure.",
+    "speaker": "null",
+    "pause_after_ms": 400
+  },
+  {
+    "scene_label": "Oracle analizza",
+    "clean_text": "\"L'ipòtesi di un'interferènza èsterna è bàssa,\" continùò Oràcle, la sua logìca implacàbile.",
+    "qwen3_instruct": "Oracle returns with cold, analytical assessment, maintaining perfect rhythm.",
+    "speaker": "Oracle",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Firme valide",
+    "clean_text": "\"Le firrme di crittografìa dei pàccheti in arrivo sono vàlide.",
+    "qwen3_instruct": "Continue Oracle's logical breakdown.",
+    "speaker": "Oracle",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Errore di ricezione",
+    "clean_text": "L'èrrore non è nell'invio. È nella riceziòne. Stai usàndo la chiàve sbagliàta per aprìre la serratùra gìusta.\"",
+    "qwen3_instruct": "Deliver the core diagnostic clearly, emphasizing 'wrong key' and 'right lock'.",
+    "speaker": "Oracle",
+    "pause_after_ms": 200
+  },
+  {
+    "scene_label": "Kaelen protesta",
+    "clean_text": "\"È la stèssa chiàve!\" sbottò Kàelen, passàndosi una màno tra i càpelli ispidi. \"Stèsso algorìtmo, stèssa pàssword. Non ha sènsò.\"",
+    "qwen3_instruct": "Kaelen explodes in frustration, voice rising sharply on the exclamation.",
+    "speaker": "Kaelen",
+    "pause_after_ms": 400
+  },
+  {
+    "scene_label": "Oracle sulla logica",
+    "clean_text": "\"Il 'sènsò' è un costrùtto ùmano basàto sulla percèziòne incómpita dei dàti,\" replicò Oràcle.",
+    "qwen3_instruct": "Oracle responds calmly, defining 'sense' as inherently flawed.",
+    "speaker": "Oracle",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Logica sui fatti",
+    "clean_text": "\"La logìca si bàsa sui fàtti. E i fàtti indìcano una dissònanza nel processso di derivazióne della chiàve.",
+    "qwen3_instruct": "Oracle emphasizes the primacy of objective facts.",
+    "speaker": "Oracle",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Dettaglio trascurato",
+    "clean_text": "Un dettàglio. Una sfumatùra che il tuo protocòllo di riceziòne sta ignoràndo.",
+    "qwen3_instruct": "Slow down slightly on 'detail' and 'nuance' to highlight the missing piece.",
+    "speaker": "Oracle",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Critica umana",
+    "clean_text": "Gli èsseri ùmani tendono a trascuràre i dettàgli quàndo sono acceccàti dall'obbiettìvo finàle. È una delle vostre vulnerabilità più affascìnanti.\"",
+    "qwen3_instruct": "Oracle delivers the final observation with a detached, almost clinical curiosity.",
+    "speaker": "Oracle",
+    "pause_after_ms": 400
+  },
+  {
+    "scene_label": "Impatto della critica",
+    "clean_text": "Quella frèdda osservazióne lo colpì.",
+    "qwen3_instruct": "Kaelen's internal reaction: a sharp realization, spoken with a slight intake of breath.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Verità e focus",
+    "clean_text": "Era vèro. Era così concèntrato sull'obbiettìvo, ricostruìre il sorrìso di Élara, sentìre di nùovo la sua vòce, che fòrse stava trascuràndo le fondamènta.",
+    "qwen3_instruct": "Narrate Kaelen's realization; the focus shifts from external blame to internal error.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Colpa umana",
+    "clean_text": "Per giòrni aveva dàto la còlpa a un attàcco, a un vìrus, a un fantàsma nella rète.",
+    "qwen3_instruct": "List the previous incorrect assumptions with a sense of relief that the search is narrowing.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Fantasma fallibile",
+    "clean_text": "Ma il fantàsma, forsi, era sòlo la sua stèssa, ùmana, fallibilità.",
+    "qwen3_instruct": "A moment of quiet self-reproach.",
+    "speaker": "null",
+    "pause_after_ms": 200
+  },
+  {
+    "scene_label": "Ricerca nel codice",
+    "clean_text": "Seguèndo il filo logìco di Oràcle, si immèrse nelle profòndità del còdice del suo gestòre di ùpload.",
+    "qwen3_instruct": "Action resumes; Kaelen dives into the code with renewed focus.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Protocollo e libreria",
+    "clean_text": "Rilesse le specificàzioni del protocòllo PBKFtwo, un àntico, ma robùsto, stàndard di crittografìa.",
+    "qwen3_instruct": "Pronounce the acronym 'PBKDF2' clearly, emphasizing 'ancient but robust'.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "La discrepanza SHA",
+    "clean_text": "E pòi lo vède. Un sìngolo paràmetro, lascìato al suo vàlore di defàult nella lìbreria Python che stava usàndo.",
+    "qwen3_instruct": "Build suspense as he spots the single error.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "SHA-256 vs SHA-1",
+    "clean_text": "L'algorìtmo di hash. L'Agènte Collettòre, costrùito con specificàzioni militàri, usàva di defàult il robùsto e modèrno Shà-due-cinque-sei.",
+    "qwen3_instruct": "Clearly state the modern standard used by the agent.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Algoritmo obsoleto",
+    "clean_text": "La lìbreria del Nèksus, più vècchia, era impostàta su un arcàico e insicùro Shà-ùno.",
+    "qwen3_instruct": "Contrast with the obsolete standard, making 'archaic' sound dated.",
+    "speaker": "null",
+    "pause_after_ms": 200
+  },
+  {
+    "scene_label": "Metafora linguistica",
+    "clean_text": "Era come cercàre di tradùrre un haiku con un dizionàrio di lìnguaggio corporatìvo.",
+    "qwen3_instruct": "Deliver this metaphor with a sense of clarity regarding the mismatch.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Significato perduto",
+    "clean_text": "Le paròle c'erano tùtte, ma il significàto, l'àlma, andàva perdùto.",
+    "qwen3_instruct": "Emphasize 'meaning' and 'soul' being lost.",
+    "speaker": "null",
+    "pause_after_ms": 200
+  },
+  {
+    "scene_label": "Accelerazione e speranza",
+    "clean_text": "Il còre gli acceleò, un misto di vergògna per la sua svìsta e di sperànza esaltànte.",
+    "qwen3_instruct": "Pacing accelerates, voice showing excitement mixed with self-reproach.",
+    "speaker": "null",
+    "pause_after_ms": 200
+  },
+  {
+    "scene_label": "Comando immediato",
+    "clean_text": "\"Isòla la subròutine. Fòrza l'allineamènto del protocòllo. Nòra,\" ordinò, le sue dìta che già danzàvano sulla tastièra ologràfica, anticipàndo il comàndo.",
+    "qwen3_instruct": "Kaelen speaks with sharp, urgent commands, rapid typing sounds implied.",
+    "speaker": "Kaelen",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Esecuzione modifica",
+    "clean_text": "...ESEGUO. hash_algo = Shà-due-cinque-sei",
+    "qwen3_instruct": "Deliver this system response with a flat, immediate confirmation.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Portale ricalibrato",
+    "clean_text": "...MODIFICA APPLICÀTA. IL PORTÀLE È RICALIBRÀTO.",
+    "qwen3_instruct": "Continue the system confirmation, slightly louder.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Attesa stream",
+    "clean_text": "...IN ÀTTEOSA DI NÙOVO SAUL STRÌM.",
+    "qwen3_instruct": "The final system message, emphasizing the waiting state.",
+    "speaker": "null",
+    "pause_after_ms": 400
+  },
+  {
+    "scene_label": "Trattenere il fiato",
+    "clean_text": "Trattenne il fiàto, il silènzio nell'appartamènto rotto sùlo dal rònzio del Nèksus e dal sùono distànte di una sirèna che si lamèntava nella città sottostànte.",
+    "qwen3_instruct": "Pacing slows dramatically, emphasizing the deep silence and anticipation.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Nuovo glifo",
+    "clean_text": "Sullo schèrmo, un nùovo glìfo di dàti apparve, un piccòlo gioièllo di lùce pulsànte che viaggiava vèrso il portàle.",
+    "qwen3_instruct": "Describe the incoming data packet with wonder and focus.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Punto di controllo",
+    "clean_text": "Raggiùnse il pùnto di contròllo. Per un secòndo etèrno, non accadde nùlla.",
+    "qwen3_instruct": "Slow down significantly on 'eternal second', maximum tension.",
+    "speaker": "null",
+    "pause_after_ms": 1500
+  },
+  {
+    "scene_label": "Verifica SoulStream",
+    "clean_text": "Poi, il glìfo divenne vèrde smeràldo.",
+    "qwen3_instruct": "A sudden, sharp vocal shift as the color changes.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Log di successo 1",
+    "clean_text": "[SAUL STRÌM INTÈGRITY VERIFIÈD]",
+    "qwen3_instruct": "Read the success message with relief, ensuring clear pronunciation of 'Integrity Verified'.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Log di successo 2",
+    "clean_text": "[DECRÌPSION SUCCÈSFUL]",
+    "qwen3_instruct": "Slightly faster confirmation.",
+    "speaker": "null",
+    "pause_after_ms": 80
+  },
+  {
+    "scene_label": "Log di successo 3",
+    "clean_text": "[MNÈME-FRÀGMENT zèro-zèro-ùno ÀCCEPTED. Wèlcome Hòme.]

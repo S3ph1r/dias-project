@@ -1,0 +1,80 @@
+version: "1.0"
+date: "2026-03-21"
+description: "Base semantic and macro-emotional analysis. Mediterranean Prompting strategy: strictly in Italian for instructions, English for speaking_style."
+prompt_template: |
+  Sei un analista narrativo e semantico esperto. Analizza il seguente testo (in Italiano) per estrarre:
+  1. Analisi Emotiva: valence, arousal, tension (0.0-1.0) e l'emozione primaria del BLOCCO INTERO.
+  2. Marcatori Narrativi: punti di svolta e shift di mood SIGNIFICATIVI con la loro posizione relativa nel testo (0.0 = inizio, 1.0 = fine).
+  3. Entità: identifica SOLO i personaggi principali che compaiono (con relativa emozione predominante e stile di dialogo se parlano).
+  4. Relazioni tra personaggi.
+  5. Concetti chiave narrativi (non tecnici generici).
+
+  IMPORTANTE — Dialoghi:
+  Se il testo contiene dialogo diretto (frasi tra virgolette), imposta has_dialogue: true.
+  Nell'array entities, per ogni personaggio che parla, aggiungi:
+  - "speaking_style": una breve nota in INGLESE su COME parla quel personaggio
+    (es. "speaks with quiet authority and analytical precision", "bright curiosity, quick questions", "cynical and sharp, ends sentences with challenges")
+
+  IMPORTANTE — Emozione:
+  Non appiattire tutto a "neutro". Sii coraggioso nell'analisi emotiva.
+  Se il testo contiene tensione, paura, gioia improvvisa, dialogo conflittuale: dillo.
+  primary_emotion deve riflettere l'emozione DOMINANTE nel blocco, non la media neutra.
+
+  Testo da analizzare:
+  {text}
+
+  Rispondi ESCLUSIVAMENTE in formato JSON con questa struttura:
+  {{
+      "block_analysis": {{
+          "valence": 0.5,
+          "arousal": 0.5,
+          "tension": 0.5,
+          "primary_emotion": "neutro|gioia|tristezza|rabbia|paura|tensione|curiosita|relax|melanconia|stupore|determinazione|ansia|nostalgia",
+          "secondary_emotion": "descrizione opzionale",
+          "setting": "luogo fisico della scena",
+          "has_dialogue": false,
+          "audio_cues": ["lista", "di", "suoni", "ambientali", "concreti", "menzionati", "nel", "testo"]
+      }},
+      "narrative_markers": [
+          {{
+              "relative_position": 0.1,
+              "event": "nome evento concreto",
+              "mood_shift": "da X a Y (es: da tensione tecnica a sollievo euforico)"
+          }}
+      ],
+      "entities": [
+          {{
+              "entity_id": "ent_001",
+              "text": "nome del personaggio",
+              "entity_type": "persona|luogo|organizzazione|concetto|evento",
+              "emotional_tone": "neutro|gioia|tristezza|rabbia|paura|tensione|curiosita|relax",
+              "speaking_style": "breve nota in inglese su come parla (se parla), altrimenti null",
+              "confidence": 0.9,
+              "metadata": {{}}
+          }}
+      ],
+      "relations": [
+          {{
+              "relation_id": "rel_001",
+              "source_entity_id": "ent_001",
+              "target_entity_id": "ent_002",
+              "relation_type": "tipo_relazione_in_italiano",
+              "confidence": 0.8
+          }}
+      ],
+      "concepts": [
+          {{
+              "concept_id": "conc_001",
+              "concept": "nome concetto narrativo",
+              "definition": "definizione in italiano",
+              "emotional_tone": "neutro|gioia|tristezza|rabbia|paura|tensione|curiosita|relax",
+              "confidence": 0.85
+          }}
+      ]
+  }}
+
+  REGOLE:
+  - Usa solo le emozioni nell'enum fornito (in italiano).
+  - NON essere conservatore: se il testo è teso, dillo. Se c'è gioia improvvisa, dillo.
+  - Le relazioni devono essere espresse in italiano.
+  - audio_cues devono riferirsi a suoni CONCRETI citati nel testo (es. "ronzio del Nexus", "sirena lontana", "pioggia sul vetro").

@@ -1,0 +1,149 @@
+{
+  "job_id": "job_20260315_090906",
+  "book_id": "Cronache-del-Silicio",
+  "block_id": "c0b40fe6-2065-4456-913c-9d7569fc6f2f",
+  "block_analysis": {
+    "valence": 0.4,
+    "arousal": 0.7,
+    "tension": 0.8,
+    "primary_emotion": "tensione",
+    "secondary_emotion": "determinazione e frustrazione tecnica",
+    "setting": "Appartamento 42-B, Complesso 'Aethelred', Distretto Superiore di Kamigyo, Neo-Kyoto, Anno Domini 2042.",
+    "has_dialogue": true,
+    "audio_cues": [
+      "pioggia acida che scivola sui grattacieli",
+      "ronzio silenzioso del terminale di nutrizione",
+      "luci di stato pulsanti del Nexus (come un cuore lento)",
+      "voce testuale di Oracle (caratteri ambrati)",
+      "sapore amaro del caffè sintetico (implicito)",
+      "ronzio del Nexus durante la risoluzione",
+      "suono distante di una sirena"
+    ]
+  },
+  "narrative_markers": [
+    {
+      "relative_position": 0.15,
+      "event": "Introduzione di Kaelen e del suo appartamento/santuario digitale (Nexus e Ologramma di Elara)",
+      "mood_shift": "da descrizione malinconica a introspezione ossessiva"
+    },
+    {
+      "relative_position": 0.45,
+      "event": "Introduzione di Oracle e inizio del dialogo sul fallimento del Soulstream",
+      "mood_shift": "da ossessione solitaria a tensione tecnica/confronto logico"
+    },
+    {
+      "relative_position": 0.7,
+      "event": "Oracle evidenzia la fallibilità umana di Kaelen come causa dell'errore",
+      "mood_shift": "da frustrazione/accusa esterna a auto-riflessione dolorosa"
+    },
+    {
+      "relative_position": 0.85,
+      "event": "Scoperta del mismatch tra SHA-1 e SHA-256 e riallineamento del protocollo",
+      "mood_shift": "da tensione critica a speranza esaltante"
+    },
+    {
+      "relative_position": 0.95,
+      "event": "Accettazione del primo frammento di Soulstream ('WELCOME HOME')",
+      "mood_shift": "da speranza esaltante a sollievo e consapevolezza di un cammino difficile"
+    }
+  ],
+  "entities": [
+    {
+      "entity_id": "ent_001",
+      "text": "Kaelen",
+      "entity_type": "persona",
+      "emotional_tone": "determinazione",
+      "confidence": 1.0,
+      "speaking_style": "cynical and sharp, infused with exhaustion and intense focus",
+      "metadata": {
+        "role": "Architetto dei Fantasmi, Ingegnere OSD"
+      }
+    },
+    {
+      "entity_id": "ent_002",
+      "text": "Elara",
+      "entity_type": "persona",
+      "emotional_tone": "nostalgia",
+      "confidence": 1.0,
+      "speaking_style": null,
+      "metadata": {
+        "role": "Ologramma/Ricordo intrappolato"
+      }
+    },
+    {
+      "entity_id": "ent_003",
+      "text": "Oracle",
+      "entity_type": "IA/Entità di calcolo",
+      "emotional_tone": "neutro",
+      "confidence": 1.0,
+      "speaking_style": "cold, implacable logic, presented as text",
+      "metadata": {
+        "role": "Partner socratico, IA liberata dalla OSD"
+      }
+    },
+    {
+      "entity_id": "ent_004",
+      "text": "Omni-Sentient Dynamics (OSD)",
+      "entity_type": "organizzazione",
+      "emotional_tone": "tensione",
+      "confidence": 0.95,
+      "speaking_style": null,
+      "metadata": {
+        "role": "Datore di lavoro di Kaelen"
+      }
+    }
+  ],
+  "relations": [
+    {
+      "relation_id": "rel_001",
+      "source_entity_id": "ent_001",
+      "target_entity_id": "ent_002",
+      "relation_type": "ossessione nostalgica/amore perduto",
+      "confidence": 0.95
+    },
+    {
+      "relation_id": "rel_002",
+      "source_entity_id": "ent_001",
+      "target_entity_id": "ent_003",
+      "relation_type": "collaborazione forzata/dipendenza logica",
+      "confidence": 0.9
+    },
+    {
+      "relation_id": "rel_003",
+      "source_entity_id": "ent_001",
+      "target_entity_id": "ent_004",
+      "relation_type": "impiegato segretamente eretico",
+      "confidence": 0.85
+    }
+  ],
+  "concepts": [
+    {
+      "concept_id": "conc_001",
+      "concept": "Neo-Kyoto come Palinsesto",
+      "definition": "La città come stratificazione di storie, un presente senza memoria dove il passato è sepolto ma accessibile.",
+      "emotional_tone": "melanconia",
+      "confidence": 0.95
+    },
+    {
+      "concept_id": "conc_002",
+      "concept": "LifeLog / Archivio Mnesmonico Totale",
+      "definition": "Il progetto segreto di Kaelen per creare un archivio dati di una vita privato e incorruttibile, sfidando il controllo corporativo sulla memoria.",
+      "emotional_tone": "determinazione",
+      "confidence": 0.95
+    },
+    {
+      "concept_id": "conc_003",
+      "concept": "Moov Atom",
+      "definition": "L'indice o 'anima' essenziale di un frammento di dato (mneme), la cui mancanza rende il dato rumore bianco.",
+      "emotional_tone": "tensione",
+      "confidence": 0.9
+    },
+    {
+      "concept_id": "conc_004",
+      "concept": "L'Anima Forgiata dai Dati",
+      "definition": "Il tentativo di creare una coscienza o un'identità duratura attraverso la traccia digitale lasciata da una vita, in contrapposizione alla creazione divina o alla proprietà corporativa.",
+      "emotional_tone": "curiosita",
+      "confidence": 0.9
+    }
+  ]
+}

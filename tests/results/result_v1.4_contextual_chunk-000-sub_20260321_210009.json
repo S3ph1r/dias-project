@@ -1,0 +1,104 @@
+{
+  "prompt_version": "1.4",
+  "scenes_count": 14,
+  "parsed_data": [
+    {
+      "scene_label": "Titolo Saga",
+      "clean_text": "Krònike del Silìcio",
+      "qwen3_instruct": "Low, unhurried chest voice, exhausted clarity. Pronounce with weight and finality. Pause between words. No emotion, strictly architectural.",
+      "speaker": null,
+      "pause_after_ms": 2000
+    },
+    {
+      "scene_label": "Titolo Libro",
+      "clean_text": "Lìbro Prìmo, L'Architètto dei Fantàsmi",
+      "qwen3_instruct": "Low, unhurried chest voice, exhausted clarity. Pronounce with weight and finality. Pause between words. No emotion, strictly architectural.",
+      "speaker": null,
+      "pause_after_ms": 2000
+    },
+    {
+      "scene_label": "Introduzione narrativa",
+      "clean_text": "Si dìce che una città non sia fàtta di cèmento e lùce, ma di stòrie. Se così fòsse, Nèo-Kiòto era un'antologìa infinìta scritta in una lìngua che nessùno potèva più lèggere per intèro.",
+      "qwen3_instruct": "Low, unhurried chest voice — the narrator speaks from a place of exhausted clarity, as if describing a world too familiar to surprise him. Maintain a steady, measured pace.",
+      "speaker": null,
+      "pause_after_ms": 200
+    },
+    {
+      "scene_label": "Descrizione urbana",
+      "clean_text": "Era una città costrùita su stràti di àltre città, un palinsèsto di futùri sognàti e passàti dimenticàti. Vivèva in uno stàto di presènte perpètuo, illuminàta da un sòle artificiàle e lavàta da una piòggia che avèva il sapòre metàllico del progrèsso.",
+      "qwen3_instruct": "Low, unhurried chest voice — the narrator speaks from a place of exhausted clarity. Slightly lower the pitch to emphasize the mechanical, decaying nature of the city.",
+      "speaker": null,
+      "pause_after_ms": 200
+    },
+    {
+      "scene_label": "Introduzione Kaelen",
+      "clean_text": "E in questo presènte sènsa memòria, c'èrano ùomini come Kaelen, ossessionàti dal tentatìvo di ricostruìre le pàgine strappàte.",
+      "qwen3_instruct": "Low, unhurried chest voice — the narrator speaks from a place of exhausted clarity. Increase the intensity of the chest resonance to reflect a shift toward obsessive introspection.",
+      "speaker": null,
+      "pause_after_ms": 2000
+    },
+    {
+      "scene_label": "Titolo Capitolo",
+      "clean_text": "Capìtolo Prìmo, Il Ronzìo della Stàtica",
+      "qwen3_instruct": "Low, unhurried chest voice, exhausted clarity. Pronounce with weight and finality. Pause between words. No emotion, strictly architectural.",
+      "speaker": null,
+      "pause_after_ms": 2000
+    },
+    {
+      "scene_label": "Contesto temporale",
+      "clean_text": "Anno Dòmini duemilaquarantadue. Distrètto Superiòre di Kamigyo, Nèo-Kiòto.",
+      "qwen3_instruct": "Low, unhurried chest voice — the narrator speaks from a place of exhausted clarity. Use clipped consonants to convey the cold precision of the date and location.",
+      "speaker": null,
+      "pause_after_ms": 200
+    },
+    {
+      "scene_label": "Descrizione meteorologica",
+      "clean_text": "La piòggia non era un evènto; era l'atmofèra. Un vèlo costànte e àcido che scivolàva lùngo i fianchi dei gratacìeli-aghi, raccoglièndo l'inquinamènto dei livèlli superiòri per depositàrlo come una pàtina untuòsa sulle stràde quarànta piàni più in bàsso.",
+      "qwen3_instruct": "Low, unhurried chest voice — the narrator speaks from a place of exhausted clarity. Maintain a slow, dragging cadence to reflect the perpetual, oppressive nature of the rain.",
+      "speaker": null,
+      "pause_after_ms": 200
+    },
+    {
+      "scene_label": "Appartamento Kaelen",
+      "clean_text": "Da lassù, dall'appartamènto quarantadue B del Complèsso Aethelred, Kaelen osservàva il mòndo annegàre in una lùce al nèon diffùsa. Il suo appartamènto era mèno un'abitaziòne e più un'estensiòne del suo sistèma nervòso.",
+      "qwen3_instruct": "Low, unhurried chest voice — the narrator speaks from a place of exhausted clarity. Shift to a more intimate, focused tone, as if describing a private sanctuary.",
+      "speaker": null,
+      "pause_after_ms": 200
+    },
+    {
+      "scene_label": "Dettagli tecnici",
+      "clean_text": "Non c'era un vèro arredamènto, sòlo ìsole di tecnològia che emergèvano da un ocèano di càvi nèri e grìgi. Un lètto bàsso, quàsi un futòn, era relegàto in un àngolo, perennemènte sfàtto.",
+      "qwen3_instruct": "Low, unhurried chest voice — the narrator speaks from a place of exhausted clarity. Use a dry, detached tone. Keep the pace steady and rhythmic.",
+      "speaker": null,
+      "pause_after_ms": 200
+    },
+    {
+      "scene_label": "Nexus",
+      "clean_text": "Il rèsto dello spàzio era un santuàrio dedicàto al Nèksus: il suo sèrver privàto, un monolìte nèro e silenziòso le cui lùci di stàto pulsàvano come un cuòre lènto e artificiàle.",
+      "qwen3_instruct": "Low, unhurried chest voice — the narrator speaks from a place of exhausted clarity. Focus on the word 'pulsàvano' with a slight decrease in pace to highlight the mechanical rhythm.",
+      "speaker": null,
+      "pause_after_ms": 200
+    },
+    {
+      "scene_label": "Elara",
+      "clean_text": "Un ologràmma a grandèzza naturàle di Elara. Era intrappolàto in un lùp di tre secòndi, un frangmènto di un ricòrdo che Kaelen non era riuschìto a cancellàre.",
+      "qwen3_instruct": "Low, unhurried chest voice — the narrator speaks from a place of exhausted clarity. Shift to a softer, slightly more melancholic tone when mentioning the memory.",
+      "speaker": null,
+      "pause_after_ms": 200
+    },
+    {
+      "scene_label": "Dettagli Elara",
+      "clean_text": "Lei si voltàva, un sorrìso che le sbocciàva sul vòlto, i capèlli che si sollevàvano leggermente in una brèzza che non esistèva più. Era un bug nel sistèma della sua vìta, un erròre bellìssimo e intolleràbile.",
+      "qwen3_instruct": "Low, unhurried chest voice — the narrator speaks from a place of exhausted clarity. Emphasize the final phrase with a slight drop in pitch to convey bitter resignation.",
+      "speaker": null,
+      "pause_after_ms": 200
+    },
+    {
+      "scene_label": "LifeLog",
+      "clean_text": "Il progètto a cui stàva lavoràndo, il suo segrèto erètico, portàva il nòme in còdice di LifeLog. Per i suoi datòri di lavòro alla Omni-Sentient Dàinàmics, Kaelen era sòlo un ingegnère di mèdio livèllo, un vòlto anònimo in una legiòne. Ma lì, in quèlla cavèrna digitàle, era un architètto di fantàsmi.",
+      "qwen3_instruct": "Low, unhurried chest voice — the narrator speaks from a place of exhausted clarity. Close with a sharp, cynical edge to reflect his internal status as an architect of ghosts.",
+      "speaker": null,
+      "pause_after_ms": 200
+    }
+  ]
+}

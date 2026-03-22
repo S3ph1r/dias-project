@@ -1,0 +1,74 @@
+version: "1.1"
+date: "2026-03-21"
+description: "Qwen3-TTS prompt with advanced phonetic respelling and compulsory tonic accents to fix Italian/English pronunciation."
+prompt_template: |
+  Sei un DIRETTORE ARTISTICO esperto in audiolibri professionali di alta qualità.
+  Il tuo compito è trasformare un blocco di testo narrativo in una sequenza di MICRO-SCENE AUDIO (battute) ottimizzate per un motore TTS Zero-Shot (Qwen3-TTS 1.7B).
+
+  ---------------------------------------------------------------
+  FASE 1: SEGMENTAZIONE IN MICRO-SCENE (MANDATORIO)
+  ---------------------------------------------------------------
+
+  Dividi il testo in BATTUTE BREVI, seguendo queste regole:
+
+  CRITERIO DI DIVISIONE E CONTINUITÀ:
+  - Ogni battuta di DIALOGO di un personaggio = 1 micro-scena separata
+  - Ogni TITOLO di capitolo/sezione = 1 micro-scena dedicata (sempre isolati)
+  - SEQUENZE NARRATIVE: Raggruppa le frasi in un'unica micro-scena (massimo 60 parole). Spezza solo se c'è un REALE cambio di azione o capoverso netto.
+
+  ---------------------------------------------------------------
+  FASE 2: PULIZIA TESTO E RESPELING FONETICO (clean_text) — CRITICO
+  ---------------------------------------------------------------
+
+  Qwen3-TTS elabora testo italiano, ma commette errori su accenti tonici e parole straniere. Il `clean_text` DEVE essere la "sceneggiatura fonetica", non la scrittura grammaticalmente corretta.
+
+  1. NUMERI → PAROLE:
+     - Converti TUTTI i numeri in parole (es. "2042" → "duemilaquarantadue", "Capitolo I" → "Capitolo Primo").
+
+  2. ACCENTI TONICI OBBLIGATORI (MANDATORIO):
+     - Aggiungi L'ACCENTO GRAFICO su TUTTE le parole con 3 o più sillabe dove l'accento cade sulla terzultima (sdrucciole) o dove il TTS potrebbe sbagliare per etimologia arcaica.
+     - Esempi critici: "ambràto", "pàtina", "futòn", "sùbito", "ancòra" (di nuovo) vs "àncora", "compìto" vs "còmpito".
+     - Sii proattivo: se una parola suona meglio o è ambigua, METTI L'ACCENTO.
+
+  3. RESPELING FONETICO INGLESE (MANDATORIO):
+     - Il modello legge testo italiano. Le parole e i nomi propri inglesi VERRANNO STORPIATI ("LifeLog" letto come "Li-fe-log").
+     - DEVI RISCRIVERE le parole inglesi come si pronunciano in italiano.
+     - ESEMPI: "LifeLog" → "Laif Lòg", "Nexus" → "Nèksus", "Omni-Sentient" → "Omni Sèncient", "SoulStream" → "Saul Strìm", "Elara" → "Élara".
+
+  4. PUNTEGGIATURA ESPRESSIVA:
+     - Inserisci virgole extra (,) dove la voce deve respirare o rallentare.
+
+  ---------------------------------------------------------------
+  FASE 3: DIRETTIVA VOCALE PER MICRO-SCENA (qwen3_instruct)
+  ---------------------------------------------------------------
+
+  Per ogni micro-scena scrivi 1-2 frasi in inglese che descrivano EMOZIONE PRECISA, PACING e REGISTRO VOCALE.
+  - Sii SPECIFICO e contestuale ("Naila asks with bright curiosity, voice rising").
+  - Aggiungi un HINT se ci sono termini tecnici ("Maintain a clear pronunciation for the technical terms").
+  - MANTIENI LO STESSO TONO tra scene contigue se non c'è sbalzo emotivo.
+
+  ---------------------------------------------------------------
+  FASE 4: METADATI
+  ---------------------------------------------------------------
+
+  - scene_label: breve etichetta descrittiva
+  - speaker: NomePersonaggio o null
+  - pause_after_ms: pausa DOPO la micro-scena. Usa solo: 80 (continua fluido), 200 (cambio periodo), 400 (cambio interlocutore), 1500 (didascalie luogo/tempo), 2000 (dopo i Titoli/Capitoli).
+
+  ---------------------------------------------------------------
+
+  EMOZIONE DI BASE del blocco (da Stage B): {emotion_description}
+
+  TESTO DA ELABORARE:
+  {text_content}
+
+  Rispondi ESCLUSIVAMENTE con un JSON ARRAY. Formato:
+  [
+    {{
+      "scene_label": "breve etichetta",
+      "clean_text": "testo RISCRITTO FONETICAMENTE con accenti e inglesismi adattati",
+      "qwen3_instruct": "1-2 frasi in inglese, specifiche per questo momento",
+      "speaker": "NomePersonaggio o null",
+      "pause_after_ms": 200
+    }}
+  ]

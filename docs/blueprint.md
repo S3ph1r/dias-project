@@ -32,10 +32,10 @@ DIAS opera con un **Design Pattern "Agnostic Proxy"**: DIAS è il cervello (Brai
 
 **Architettura Sequenziale a 8 Stadi** (v6.4 - Cinematic Soundscape):
 1.  **[A] TextIngester**: Estrazione da PDF/EPUB e chunking grezzo (CPU).
-2.  **[B] SemanticAnalyzer**: Analisi emotiva macro, speaking styles e marker narrativi (via ARIA Cloud Gateway).
+2.  **[B] SemanticAnalyzer**: Analisi emotiva macro, speaking styles e marker narrativi. Utilizza prompt esterni versionati (`config/prompts/stage_b/`).
 3.  **[B2] SoundDirector**: Analisi strutturale per il soundscape: individua i *Structural Anchors* (bridge musicali) e definisce la *Global Sound Palette* del capitolo (via ARIA Cloud Gateway). Stage dedicato, non integrato in B per preservare la qualità del prompt.
-4.  **[C] SceneDirector**: Segmentazione dinamica per *Emotional Beats*, fonetica e script TTS agnostico (via ARIA Cloud Gateway).
-5.  **[D] VoiceGenProxy**: Impacchettamento payload e delega ad ARIA via code Redis. Nessuna esecuzione locale.
+4.  **[C] SceneDirector**: Segmentazione dinamica per *Emotional Beat* e fonetica. Utilizza la logica **Anchor + Variation (v1.4)** basata sul contesto di Stage B e prompt esterni versionati (`config/prompts/stage_c/`).
+5.  **[D] VoiceGenProxy**: Impacchettamento payload e delega ad ARIA. Utilizza configurazioni centralizzate per backend, voci e parametri tecnici (`dias.yaml`).
 6.  **[E] MusicGenerator**: Produzione soundscape a tre livelli: Tappeto Atmosferico (Stem A), Leitmotif tematici (Stem B) e Sting per i Bridge (Stem C) (via ARIA GPU).
 7.  **[F] AudioMixer**: Mixaggio multi-stem voce/musica/sfx con ducking adattivo e sospensione voce per i Structural Anchors (FFmpeg, CPU).
 8.  **[G] MasteringEngine**: Finalizzazione MP3, metadati e Loudness -16 LUFS (CPU).
@@ -74,13 +74,15 @@ Lo Stage C è il cuore qualitativo di DIAS.
 - **Master JSON & Scene Splitting**: Lo Stage C produce inicialmente un unico **Master JSON** contenente l'array di tutte le scene individuate nel chunk. Questo file viene poi processato per generare i task individuali per lo Stage D.
 - **Isolamento Strutturale**: Obbliga ad isolare titoli di libri o capitoli in scene singole (per evitare che il TTS li legga a velocità sostenuta incollati al primo paragrafo).
 - **Normalizzazione Fonetica Assoluta**: Il testo generato (`clean_text`) non contiene alcun tag in linea. I numeri vengono decodificati in lettere ("2042" → "duemilaquarantadue") e le pronunce ambigue vengono assistite da accenti testuali (es. "pàtina", "futòn").
-- **Ottimizzazione Qwen3-TTS**: Genera un parametro `qwen3_instruct` in **prosa naturale inglese** (2-3 frasi) che descrive l'emozione, il ritmo e l'arco narrativo (es. "The narrator starts with a low, conspiratorial whisper, increasing in pace and intensity as the secret is revealed...").
+- **Istruzioni Qwen3-TTS (v1.4 Anchor Logic)**: Implementa la struttura **Anchor + Variation**. Ogni istruzione inizia con un'ancora vocale fissa (`narrator_base_tone`) per stabilizzare il tono del modello, seguita da variazioni fisiche e ritmiche basate sul contesto di Stage B (arc narrativo, speaking styles).
+- **Prompting Esternalizzato**: I template di regia sono isolati in file YAML (`config/prompts/stage_c/v1.4_contextual.yaml`), permettendo A/B testing e modifiche "hot" senza toccare il codice.
+- **Integrazione Stage B Context**: Utilizza l'intera `macro_analysis` di Stage B per iniettare nel prompt dettagli su personaggi, arco emotivo e stili di dialogo, garantendo coerenza narrativa tra scene distanti.
 - **Supporto Dialoghi**: Individua i cambi di speaker e genera `dialogue_notes` per aiutare il TTS a differenziare le voci.
 
 #### Stage D: Voice Generator Proxy (La Delega ad ARIA)
 Lo Stage D non conosce l'infrastruttura di hosting dei modelli, ma decide quale "variante" usare.
 - **Routing Dinamico**: Il backend di target è definito da `model_id` (es. `qwen3-tts-1.7b` per Base o `qwen3-tts-custom` per CustomVoice).
-- **Configurabilità**: Legge il modello di default dalla variabile `.env` `DEFAULT_TTS_MODEL_ID`.
+- **Configurabilità Centralizzata (v2.2)**: Legge il modello attivo (`active_tts_backend`), le voci di default e i parametri tecnici (Temperature, Top_P) direttamente da `dias.yaml`, facilitando l'integrazione con la Dashboard per il setup del progetto.
 - **Logica di Distributed Callback**: Inserisce nel payload `callback_key = "dias:callback:stage_d:{job}:{scene}"` ed entra in uno stato `BRPOP` congelato, attendendo pazientemente (fino a 900s) che ARIA generi l'audio. Per swap di modelli JIT, il timeout è esteso a 600s+ lato ARIA.
 - **Resilienza e Timeout (Self-Healing)**: Se il PC ARIA è spento o il timeout scade, lo Stage D logga un errore. Grazie alla *Skipping Logic*, al riavvio del sistema il task verrà ri-accodato automaticamente.
 - **Persistenza Code**: I messaggi inviati ad ARIA rimangono nella coda Redis finché ARIA non li consuma, rendendo il sistema resiliente a spegnimenti temporanei dei lavoratori GPU.

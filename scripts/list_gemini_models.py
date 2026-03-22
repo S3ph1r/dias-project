@@ -1,25 +1,30 @@
 import os
 import json
-import google.genai as genai
+from google import genai
 from dotenv import load_dotenv
 
 def list_models():
     load_dotenv()
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        print("GOOGLE_API_KEY not found")
+        print("Error: GOOGLE_API_KEY not found in .env")
         return
 
-    client = genai.Client(api_key=api_key)
     try:
-        print("Attempting to list models...")
-        # Note: In the new google-genai SDK, listing models might vary by version
-        # We can also try a simple generation with a known safe name like 'gemini-1.5-flash'
-        # but let's see if we can discover.
-        for model in client.models.list():
-            print(f"Model: {model.name} (Supported actions: {model.supported_actions})")
+        client = genai.Client(api_key=api_key)
+        print("Fetching models from Google Gemini API...")
+        models = client.models.list()
+        
+        print("\nAvailable Models:")
+        print("-" * 50)
+        for m in models:
+            # Filter for Flash and Lite models
+            if "flash" in m.name.lower() or "lite" in m.name.lower():
+                print(f"ID: {m.name: <40} | Name: {m.display_name}")
+        print("-" * 50)
+        
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error listing models: {e}")
 
 if __name__ == "__main__":
     list_models()

@@ -52,7 +52,8 @@ DIAS (Document Intelligence & Analysis System) è una pipeline di elaborazione d
 - **Variabili chiave**:
   - `MOCK_SERVICES`: Switch mock/real
   - `REDIS_HOST`, `REDIS_PORT`: Connessione Redis
-  - `GEMINI_API_KEY`: Chiave API Google
+  - `ACTIVE_TTS_BACKEND`: Modello TTS predefinito (Qwen3, Fish)
+  - `stage_b/c_prompt_path`: Path ai template YAML dei prompt
 
 #### **`logging_setup.py`** - Logging Strutturato
 - **Funzionalità**:
@@ -159,6 +160,7 @@ DIAS (Document Intelligence & Analysis System) è una pipeline di elaborazione d
   - Analisi sentiment e topic extraction.
   - Generazione macro-analisi per la regia.
 - **Rate limiting**: Gestione quota Gemini API (Pacing 60s + Daily Limit 20 RPD).
+- **Prompting Esternalizzato**: Carica il template da `config/prompts/stage_b/v1.0_base.yaml`.
 
 #### **`stage_c_scene_director.py`** - Stage C: Regia e Segmentazione
 - **🎯 Scopo**: Trasformare chunk in scene recitabili per Qwen3.
@@ -167,6 +169,8 @@ DIAS (Document Intelligence & Analysis System) è una pipeline di elaborazione d
 - **Funzionalità**:
   - Segmentazione basata su emotional beats.
   - Generazione `qwen3_instruct` (Tone, Rhythm, Attitude).
+  - **Dinamismo Cinematico (v1.4)**: Usa logic "Anchor + Variation" per stabilizzare il TTS.
+  - **Prompting Esternalizzato**: Carica il template da `config/prompts/stage_c/v1.4_contextual.yaml`.
   - Normalizzazione fonetica del testo.
 
 #### **`gemini_rate_limiter.py`** - Rate Limiter Globale su Redis
@@ -175,6 +179,18 @@ DIAS (Document Intelligence & Analysis System) è una pipeline di elaborazione d
   - **Sincronizzazione Redis**: Utilizza le chiavi `aria:rate_limit:google:*` per garantire il pacing tra Stage B e Stage C indipendenti.
   - **Lockout 429**: Auto-blocco globale di 15 minuti in caso di errore quota.
   - Sostituisce i lock in memoria RAM, rendendo l'architettura sicura in multiprocesso.
+
+---
+
+### **`config/prompts/` - Asset di Regia (LLM Templates)**
+
+#### **`stage_b/v1.0_base.yaml`**
+- **Scopo**: Template per analisi semantica e macro-emotiva.
+- **Strategia**: Mediterranean Prompting (Istruzioni in IT, output tecnico in EN).
+
+#### **`stage_c/v1.4_contextual.yaml`**
+- **Scopo**: Regia fine e segmentazione emotional beats.
+- **Logica**: **Anchor + Variation**. Utilizza context Stage B per istruzioni vocali fisiche e ritmiche.
 
 ---
 

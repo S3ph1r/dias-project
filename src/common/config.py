@@ -34,8 +34,22 @@ class ModelSpec(BaseModel):
     batch_size: int = 1
 
 
+class TTSBackendConfig(BaseModel):
+    name: str
+    device: str = "cuda"
+    max_memory_gb: int = 8
+    batch_size: int = 1
+    # Defaults used by Stage D if not provided by Stage C
+    default_voice: str = "luca"
+    default_instruct: str = "Professional Italian male narrator, neutral and clear."
+    default_temperature: float = 0.5
+    default_top_p: float = 0.9
+
+
 class ModelsConfig(BaseModel):
-    qwen3_tts: ModelSpec = ModelSpec(name="Qwen3-TTS-12Hz-1.7B-Base")
+    active_tts_backend: str = "qwen3-tts-1.7b"
+    qwen3_tts: TTSBackendConfig = TTSBackendConfig(name="Qwen3-TTS-12Hz-1.7B-Base")
+    fish_s1_mini: TTSBackendConfig = TTSBackendConfig(name="Fish-S1-Mini", default_voice="narrator_fish")
     musicgen: ModelSpec = ModelSpec(name="musicgen-small", max_memory_gb=4)
 
 
@@ -106,6 +120,9 @@ class DiasConfig(BaseModel):
     pipeline: PipelineConfig = PipelineConfig()
     audio: AudioConfig = AudioConfig()
     logging: LoggingConfig = LoggingConfig()
+    # Stage B and C prompt paths — supports A/B testing by swapping YAML files
+    stage_b_prompt_path: str = "config/prompts/stage_b/v1.0_base.yaml"
+    stage_c_prompt_path: str = "config/prompts/stage_c/v1.0_base.yaml"
 
 
 # --- Singleton ---

@@ -1,0 +1,103 @@
+version: "1.3"
+date: "2026-03-21"
+description: "V1.0 base + phonetic English respelling. Minimal, stable, generic examples only."
+prompt_template: |
+  Sei un DIRETTORE ARTISTICO esperto in audiolibri professionali di alta qualità.
+  Il tuo compito è trasformare un blocco di testo narrativo in una sequenza di MICRO-SCENE AUDIO (battute) ottimizzate per un motore TTS Zero-Shot (Qwen3-TTS 1.7B).
+
+  ---------------------------------------------------------------
+  FASE 1: SEGMENTAZIONE IN MICRO-SCENE (MANDATORIO)
+  ---------------------------------------------------------------
+
+  Dividi il testo in BATTUTE BREVI, seguendo queste regole:
+
+  CRITERIO DI DIVISIONE E CONTINUITÀ (CRITICO):
+  - Ogni battuta di DIALOGO di un personaggio = 1 micro-scena separata
+  - Ogni TITOLO di capitolo/sezione = 1 micro-scena dedicata (sempre isolati)
+  - SEQUENZE NARRATIVE e DESCRITTIVE: Se hai un lungo blocco di descrizione continua che condivide lo stesso "mood", NON SPEZZARLO frase per frase. Raggruppa le frasi in un'unica micro-scena, sforzandoti di arrivare vicino al limite massimo di 60 parole.
+  - Spezza una sequenza narrativa in due micro-scene SOLO se c'è un REALE cambio di azione, di focalizzazione o un capoverso molto netto.
+
+  LUNGHEZZA:
+  - Micro-scene DIALOGICHE: 5-40 parole (una battuta per personaggio)
+  - Micro-scene NARRATIVE: 10-60 parole (massimizza le 60 parole per evitare l'effetto "collage")
+  - MAI superare 60 parole per micro-scena
+
+  REGOLE SUI TITOLI (ISOLAMENTO MANDATORIO):
+  Analizza la struttura visiva del testo. Se il blocco inizia con frasi brevi isolate (sotto le 15 parole) che fungono da Titolo della Saga, Titolo del Libro, o Numero del Capitolo, DEVI isolare OGNUNA in una micro-scena singola.
+  - NON unire mai un titolo strutturale con il paragrafo narrativo che lo segue.
+
+  ---------------------------------------------------------------
+  FASE 2: PULIZIA TESTO (clean_text) — MANDATORIO
+  ---------------------------------------------------------------
+
+  1. NUMERI → PAROLE:
+     - Converti TUTTI i numeri arabi in parole per esteso (es. "2042" → "duemilaquarantadue", "42-B" → "quarantadue B")
+     - Converti numeri romani in ordinali (es. "Capitolo I" → "Capitolo Primo")
+
+  2. ACCENTI FONETICI ITALIANI:
+     - Aggiungi l'accento grafico SOLO sulle parole ambigue, dove il TTS potrebbe sbagliare l'accento tonico.
+     - ESEMPI: "pàtina", "futòn", "sùbito", "ancòra" (di nuovo) vs "àncora" (nautica), "compìto" (cortese) vs "còmpito" (esercizio)
+     - VINCOLO: NON aggiungere lettere o modificare lo spelling della parola. Solo l'accento grafico.
+
+  3. RESPELING FONETICO INGLESE:
+     - I termini tecnici e i nomi propri inglesi vengono spesso mispronunciati da un TTS italiano. RISCRIVILI come li leggerebbe un italiano.
+     - ESEMPI: "Software" → "Sòftuer", "Network" → "Nètuork", "Upload" → "Aplòd", "Chip" → "Cip".
+     - Applica solo alle parole chiaramente inglesi, non alle parole internazionali già assimilate dall'italiano.
+
+  4. TAG E PULIZIA:
+     - Rimuovi tutti i tag tra parentesi (es. (neutral), (break))
+     - Rimuovi punteggiatura residua dai titoli (es. ":" alla fine)
+     - NON inserire nessun tag nel clean_text
+
+  5. PUNTEGGIATURA ESPRESSIVA:
+     - Inserisci virgole extra (,) dove la voce deve respirare
+     - Usa puntini di sospensione (...) per suspense e esitazione
+
+  ---------------------------------------------------------------
+  FASE 3: DIRETTIVA VOCALE PER MICRO-SCENA (qwen3_instruct)
+  ---------------------------------------------------------------
+
+  Qwen3-TTS è controllato da istruzioni in PROSA NATURALE in INGLESE.
+  NON usare mai etichette rigide (es. "Tone: Dark. Rhythm: Slow.").
+
+  Per ogni micro-scena scrivi 1-2 frasi in inglese che descrivano:
+  - L'EMOZIONE PRECISA di quel momento (non generica)
+  - Il PACING specifico (veloce? lento? con pause?)
+  - Il REGISTRO VOCALE se è un dialogo (sussurro? grido? ironia?)
+
+  QUALITÀ DELL'INSTRUCT (CRITICO):
+  - Sii SPECIFICO sul momento, non generico
+  - Per scene narrative consecutive con lo stesso "mood", MANTIENI LO STESSO TONO nell'instruct
+  - Per i DIALOGHI: descrivi come parla quel personaggio specifico
+  - Non menzionare mai che si tratta di un audiolibro nell'istruzione
+
+  ---------------------------------------------------------------
+  FASE 4: METADATI
+  ---------------------------------------------------------------
+
+  - scene_label: breve etichetta descrittiva (es. "La domanda di Naila")
+  - speaker: il nome del personaggio che parla (null se è narrazione pura)
+  - pause_after_ms: pausa strutturale DOPO questa micro-scena. UTILIZZA SOLO:
+    - 80  = Nessuna pausa. Narrazione fluida.
+    - 200 = Pausa breve. Fine periodo o cambio di battuta.
+    - 400 = Pausa media. Cambio interlocutore o nuovo capoverso.
+    - 1500 = Pausa lunga. Didascalie di tempo/luogo.
+    - 2000 = Pausa Molto Lunga. OBBLIGATORIA dopo un Titolo di Saga, Libro, o Capitolo.
+
+  ---------------------------------------------------------------
+
+  EMOZIONE DI BASE del blocco (da Stage B): {emotion_description}
+
+  TESTO DA ELABORARE:
+  {text_content}
+
+  Rispondi ESCLUSIVAMENTE con un JSON ARRAY. Formato:
+  [
+    {{
+      "scene_label": "breve etichetta",
+      "clean_text": "testo pulito per TTS, con accenti e rispeling inglese",
+      "qwen3_instruct": "1-2 frasi in inglese, specifiche per questo momento",
+      "speaker": "NomePersonaggio o null",
+      "pause_after_ms": 200
+    }}
+  ]

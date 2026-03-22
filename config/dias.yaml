@@ -3,21 +3,41 @@
 
 # Google GenAI Configuration
 google:
-  model_flash_lite: "gemini-flash-lite-latest"
+  model_flash_lite: "gemini-3.1-flash-lite-preview"
   rate_limit_seconds: 60
-  daily_request_limit: 20
+  daily_request_limit: 100
   rate_limit_penalty_seconds: 900
   max_retries: 3
   temperature: 0.2
   response_mime_type: "application/json"
 
+# Stage B and C prompt versions (A/B testing)
+stage_b_prompt_path: "config/prompts/stage_b/v1.0_base.yaml"
+stage_c_prompt_path: "config/prompts/stage_c/v1.4_contextual.yaml"
+
 # Local Models (GPU Worker)
 models:
+  active_tts_backend: "qwen3-tts-1.7b"
+  
   qwen3_tts:
     name: "Qwen3-TTS-12Hz-1.7B-Base"
     device: "cuda"
     max_memory_gb: 8
     batch_size: 1
+    default_voice: "luca"
+    default_instruct: "Professional Italian male narrator, neutral and clear."
+    default_temperature: 0.5
+    default_top_p: 0.9
+
+  fish_s1_mini:
+    name: "Fish-S1-Mini"
+    device: "cuda"
+    max_memory_gb: 4
+    batch_size: 1
+    default_voice: "narrator_fish"
+    default_instruct: "(neutral)"
+    default_temperature: 0.7
+    default_top_p: 0.8
 
   musicgen:
     name: "musicgen-small"

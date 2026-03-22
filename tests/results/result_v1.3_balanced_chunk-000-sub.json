@@ -1,0 +1,113 @@
+{
+  "time_s": 11.07,
+  "tokens": "N/A via Gateway",
+  "is_valid_json": true,
+  "raw_response": "Valid JSON",
+  "parsed_data": [
+    {
+      "scene_label": "Titolo Saga",
+      "clean_text": "Cronache del Silicio",
+      "qwen3_instruct": "Read with a grand, cinematic tone, as if introducing a legendary tale. Maintain a steady, confident pace.",
+      "speaker": null,
+      "pause_after_ms": 2000
+    },
+    {
+      "scene_label": "Titolo Libro",
+      "clean_text": "Libro Primo, L'Architetto dei Fantasmi",
+      "qwen3_instruct": "Speak with a sense of mystery and gravity, emphasizing the word 'fantasmi' with a slight, haunting delay.",
+      "speaker": null,
+      "pause_after_ms": 2000
+    },
+    {
+      "scene_label": "Narrazione introduttiva",
+      "clean_text": "Si dice che una citt\u00e0 non sia fatta di cemento e luce, ma di storie. Se cos\u00ec fosse, N\u00e8o-K\u00ecoto era un'antologia infinita scritta in una lingua che nessuno poteva pi\u00f9 leggere per intero.",
+      "qwen3_instruct": "Narrate with a reflective and philosophical tone. Keep the pace measured and thoughtful.",
+      "speaker": null,
+      "pause_after_ms": 80
+    },
+    {
+      "scene_label": "Descrizione urbana",
+      "clean_text": "Era una citt\u00e0 costruita su strati di altre citt\u00e0, un palinsesto di futuri sognati e passati dimenticati. Viveva in uno stato di presente perpetuo, illuminata da un sole artificiale e lavata da una pioggia che aveva il sapore metallico del progresso.",
+      "qwen3_instruct": "Maintain the atmospheric and melancholic mood. The tone should feel dense and descriptive, like observing a cold, futuristic landscape.",
+      "speaker": null,
+      "pause_after_ms": 80
+    },
+    {
+      "scene_label": "Introduzione Kaelen",
+      "clean_text": "E in questo presente senza memoria, c'erano uomini come Kaelen, ossessionati dal tentativo di ricostruire le pagine strappate.",
+      "qwen3_instruct": "Introduce Kaelen with a touch of intrigue. Slow down slightly on the final phrase to emphasize his obsession.",
+      "speaker": null,
+      "pause_after_ms": 1500
+    },
+    {
+      "scene_label": "Titolo Capitolo",
+      "clean_text": "Capitolo Primo, Il Ronzio della Statica",
+      "qwen3_instruct": "Read with a crisp, professional tone, signaling the start of a new section.",
+      "speaker": null,
+      "pause_after_ms": 2000
+    },
+    {
+      "scene_label": "Setting temporale",
+      "clean_text": "Anno D\u00f2mini duemilaquarantadue. Distretto Superiore di Kamigyo, N\u00e8o-K\u00ecoto.",
+      "qwen3_instruct": "Deliver the date and location with the precision of a documentary narrator. Sharp and clear.",
+      "speaker": null,
+      "pause_after_ms": 400
+    },
+    {
+      "scene_label": "Descrizione pioggia",
+      "clean_text": "La pioggia non era un evento, era l'atmosfera. Un velo costante e acido che scivolava lungo i fianchi dei grattacieli-aghi, raccogliendo l'inquinamento dei livelli superiori per depositarlo come una p\u00e0tina untuosa sulle strade quaranta piani pi\u00f9 in basso.",
+      "qwen3_instruct": "Use a heavy, oppressive tone. The pace should be slow and rhythmic, mirroring the relentless rain.",
+      "speaker": null,
+      "pause_after_ms": 200
+    },
+    {
+      "scene_label": "Kaelen osservatore",
+      "clean_text": "Da lass\u00f9, dall'appartamento quarantadue B del Complesso Aethelred, Kaelen osservava il mondo annegare in una luce al neon diffusa.",
+      "qwen3_instruct": "Adopt a detached, observant tone. Emphasize the distance between Kaelen and the world below.",
+      "speaker": null,
+      "pause_after_ms": 400
+    },
+    {
+      "scene_label": "Descrizione appartamento",
+      "clean_text": "Il suo appartamento era meno un'abitazione e pi\u00f9 un'estensione del suo sistema nervoso. Non c'era un vero arredamento, solo isole di tecnologia che emergevano da un oceano di cavi neri e grigi. Un letto basso, quasi un fut\u00f2n, era relegato in un angolo, perennemente sfatto.",
+      "qwen3_instruct": "Maintain a cold, analytical tone, describing the disarray of the room with clinical focus.",
+      "speaker": null,
+      "pause_after_ms": 80
+    },
+    {
+      "scene_label": "Tecnologia",
+      "clean_text": "Un terminale di nutrizione automatizzato ronzava silenziosamente accanto a un dissipatore di calore, pronto a stampare un pasto nutriente ma insapore. Il resto dello spazio era un santuario dedicato al N\u00e8ksus: il suo server privato, un monolite nero e silenzioso le cui luci di stato pulsavano come un cuore lento e artificiale.",
+      "qwen3_instruct": "Describe the technology with a sense of hollow, artificial life. Keep the cadence steady and slightly mechanical.",
+      "speaker": null,
+      "pause_after_ms": 80
+    },
+    {
+      "scene_label": "Le pareti",
+      "clean_text": "Le pareti erano nude, salvo per le ombre danzanti proiettate dagli schermi olografici e per l'unica, ostinata anomalia in quel mondo di logica fredda. Un ologramma a grandezza naturale di Elara.",
+      "qwen3_instruct": "Shift to a more intimate, hushed tone when mentioning Elara. The atmosphere should feel suddenly fragile.",
+      "speaker": null,
+      "pause_after_ms": 400
+    },
+    {
+      "scene_label": "Il ricordo di Elara",
+      "clean_text": "Era intrappolato in un loop di tre secondi, un frammento di un ricordo che Kaelen non era riuscito a cancellare. Lei si voltava, un sorriso che le sbocciava sul volto, i capelli che si sollevavano leggermente in una brezza che non esisteva pi\u00f9.",
+      "qwen3_instruct": "Read with a touch of sadness and longing. Slow down the pace to let the imagery of the memory sink in.",
+      "speaker": null,
+      "pause_after_ms": 80
+    },
+    {
+      "scene_label": "Dettaglio occhi",
+      "clean_text": "I suoi occhi, anche nella loro riproduzione spettrale, contenevano una scintilla di anarchia amorevole, una luce che sembrava sfidare il mondo ordinato che lui cercava di costruire. Era un bag nel sistema della sua vita, un errore bellissimo e intollerabile.",
+      "qwen3_instruct": "Deepen the emotional intensity. The tone should convey both the beauty and the pain of Kaelen's obsession.",
+      "speaker": null,
+      "pause_after_ms": 400
+    },
+    {
+      "scene_label": "Il progetto",
+      "clean_text": "Il progetto a cui stava lavorando, il suo segreto eretico, portava il nome in codice di LaifLog. Per i suoi datori di lavoro alla Omnis\u00e8ntient Dain\u00e0mics, Kaelen era solo un ingegnere di medio livello, un volto anonimo in una legione. Ma l\u00ec, in quella caverna digitale, era un architetto di fantasmi.",
+      "qwen3_instruct": "Conclude with a dark, resolute tone. The final sentence should be delivered with a sense of clandestine purpose.",
+      "speaker": null,
+      "pause_after_ms": 200
+    }
+  ]
+}

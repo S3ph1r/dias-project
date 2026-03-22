@@ -323,86 +323,33 @@ class StageBSemanticAnalyzer(BaseStage):
     def _create_semantic_analysis_prompt(self, text: str) -> str:
         """
         Crea prompt per analisi semantica e macro-emotiva con Gemini.
-        Strategia Mediterranean Prompting: Rigorosamente in Italiano.
+        Carica il template da un file YAML esterno per supportare il versioning.
         """
-        return f"""
-        Sei un analista narrativo e semantico esperto. Analizza il seguente testo (in Italiano) per estrarre:
-        1. Analisi Emotiva: valence, arousal, tension (0.0-1.0) e l'emozione primaria del BLOCCO INTERO.
-        2. Marcatori Narrativi: punti di svolta e shift di mood SIGNIFICATIVI con la loro posizione relativa nel testo (0.0 = inizio, 1.0 = fine).
-        3. Entità: identifica SOLO i personaggi principali che compaiono (con relativa emozione predominante e stile di dialogo se parlano).
-        4. Relazioni tra personaggi.
-        5. Concetti chiave narrativi (non tecnici generici).
+        import yaml
+        from pathlib import Path
 
-        IMPORTANTE — Dialoghi:
-        Se il testo contiene dialogo diretto (frasi tra virgolette), imposta has_dialogue: true.
-        Nell'array entities, per ogni personaggio che parla, aggiungi:
-        - "speaking_style": una breve nota in INGLESE su COME parla quel personaggio
-          (es. "speaks with quiet authority and analytical precision", "bright curiosity, quick questions", "cynical and sharp, ends sentences with challenges")
+        # Caricamento del prompt esternalizzato
+        prompt_path = getattr(self.config, "stage_b_prompt_path", "config/prompts/stage_b/v1.0_base.yaml")
+        prompt_full_path = Path(__file__).parent.parent.parent / prompt_path
 
-        IMPORTANTE — Emozione:
-        Non appiattire tutto a "neutro". Sii coraggioso nell'analisi emotiva.
-        Se il testo contiene tensione, paura, gioia improvvisa, dialogo conflittuale: dillo.
-        primary_emotion deve riflettere l'emozione DOMINANTE nel blocco, non la media neutra.
+        try:
+            with open(prompt_full_path, 'r', encoding='utf-8') as f:
+                prompt_data = yaml.safe_load(f)
+                template = prompt_data.get('prompt_template', '')
+                prompt_version = prompt_data.get('version', '1.0')
+        except Exception as e:
+            self.logger.error(f"Impossibile caricare il prompt Stage B da {prompt_full_path}: {e}")
+            # Fallback al prompt hardcoded (copia di sicurezza del v1.0)
+            template = """
+            Sei un analista narrativo e semantico esperto. Analizza il seguente testo (in Italiano) per estrarre:
+            1. Analisi Emotiva: valence, arousal, tension (0.0-1.0) e l'emozione primaria del BLOCCO INTERO.
+            2. Marcatori Narrativi: punti di svolta e shift di mood SIGNIFICATIVI.
+            ... {text} ... (fallback)
+            """
+            self.logger.warning("Usando prompt fallback per Stage B")
 
-        Testo da analizzare:
-        {text}
-
-        Rispondi ESCLUSIVAMENTE in formato JSON con questa struttura:
-        {{
-            "block_analysis": {{
-                "valence": 0.5,
-                "arousal": 0.5,
-                "tension": 0.5,
-                "primary_emotion": "neutro|gioia|tristezza|rabbia|paura|tensione|curiosita|relax|melanconia|stupore|determinazione|ansia|nostalgia",
-                "secondary_emotion": "descrizione opzionale",
-                "setting": "luogo fisico della scena",
-                "has_dialogue": false,
-                "audio_cues": ["lista", "di", "suoni", "ambientali", "concreti", "menzionati", "nel", "testo"]
-            }},
-            "narrative_markers": [
-                {{
-                    "relative_position": 0.1,
-                    "event": "nome evento concreto",
-                    "mood_shift": "da X a Y (es: da tensione tecnica a sollievo euforico)"
-                }}
-            ],
-            "entities": [
-                {{
-                    "entity_id": "ent_001",
-                    "text": "nome del personaggio",
-                    "entity_type": "persona|luogo|organizzazione|concetto|evento",
-                    "emotional_tone": "neutro|gioia|tristezza|rabbia|paura|tensione|curiosita|relax",
-                    "speaking_style": "breve nota in inglese su come parla (se parla), altrimenti null",
-                    "confidence": 0.9,
-                    "metadata": {{}}
-                }}
-            ],
-            "relations": [
-                {{
-                    "relation_id": "rel_001",
-                    "source_entity_id": "ent_001",
-                    "target_entity_id": "ent_002",
-                    "relation_type": "tipo_relazione_in_italiano",
-                    "confidence": 0.8
-                }}
-            ],
-            "concepts": [
-                {{
-                    "concept_id": "conc_001",
-                    "concept": "nome concetto narrativo",
-                    "definition": "definizione in italiano",
-                    "emotional_tone": "neutro|gioia|tristezza|rabbia|paura|tensione|curiosita|relax",
-                    "confidence": 0.85
-                }}
-            ]
-        }}
-
-        REGOLE:
-        - Usa solo le emozioni nell'enum fornito (in italiano).
-        - NON essere conservatore: se il testo è teso, dillo. Se c'è gioia improvvisa, dillo.
-        - Le relazioni devono essere espresse in italiano.
-        - audio_cues devono riferirsi a suoni CONCRETI citati nel testo (es. "ronzio del Nexus", "sirena lontana", "pioggia sul vetro").
-        """
+        self.logger.info(f"Stage B prompt v{prompt_version} loaded from {prompt_path}")
+        return template.replace("{text}", text)
     
     def _parse_gemini_response(self, response_text: str) -> Dict[str, Any]:
         """
