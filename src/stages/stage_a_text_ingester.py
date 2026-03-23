@@ -125,11 +125,12 @@ class TextIngester(BaseStage):
         super().__init__(
             stage_name="text_ingester",
             stage_number=1,
-            input_queue="dias:queue:0:upload",  # Books ready for ingestion
-            output_queue="dias:queue:1:ingestion",  # Text chunks ready for analysis
+            input_queue="dias:q:0:upload",  # Keep upload as is for now or use config if exists
+            output_queue=None, # Set below
             config=config,
             redis_client=redis_client
         )
+        self.output_queue = self.cfg.queues.ingestion
         
         # Initialize persistence manager
         self.persistence = DiasPersistence()
@@ -571,6 +572,47 @@ class TextIngester(BaseStage):
         self.logger.info(f"Created {len(chunks)} chunks from text")
         return chunks
     
+    def intelligent_micro_chunk(self, text: str, macro_index: int) -> List[Dict[str, Any]]:
+        """
+        Split a macro-chunk into micro-chunks (~300 words) for Stage C.
+        Ensures sentence boundaries are respected.
+        """
+        target_micro_words = 300
+        words = text.split()
+        total_words = len(words)
+        
+        micro_chunks = []
+        start_idx = 0
+        micro_idx = 0
+        
+        while start_idx < total_words:
+            # Target end
+            end_idx = min(start_idx + target_micro_words, total_words)
+            
+            # Find a near period to avoid cutting sentences
+            if end_idx < total_words:
+                temp_text = " ".join(words[start_idx:end_idx+20]) # look ahead a bit
+                last_period = temp_text.rfind('.', 0, len(" ".join(words[start_idx:end_idx])) + 50)
+                if last_period != -1:
+                    # Sync end_idx with character position of period
+                    # Simple approximation: find how many words before that period
+                    micro_text_raw = temp_text[:last_period+1]
+                    end_idx = start_idx + len(micro_text_raw.split())
+            
+            micro_text = " ".join(words[start_idx:end_idx]).strip()
+            if micro_text:
+                micro_chunks.append({
+                    "micro_index": micro_idx,
+                    "text": micro_text,
+                    "word_count": len(micro_text.split()),
+                    "label": f"chunk-{macro_index:03d}-micro-{micro_idx:03d}"
+                })
+            
+            start_idx = end_idx
+            micro_idx += 1
+            
+        return micro_chunks
+
     def find_optimal_chunk_end(self, text: str, start_pos: int, 
                              paragraph_boundaries: List[int], 
                              sentence_boundaries: List[int],
@@ -743,6 +785,27 @@ class TextIngester(BaseStage):
                     saved_file_paths[block.block_id] = filepath
                     
                     self.logger.info(f"💾 Blocco salvato: {filepath}")
+                    
+                    # --- NEW: Scomposizione in MICRO-CHUNK per Stage C ---
+                    micro_chunks = self.intelligent_micro_chunk(block.block_text, block.block_index)
+                    for micro in micro_chunks:
+                        micro_data = {
+                            "book_id": block.book_id,
+                            "macro_index": block.block_index,
+                            "micro_index": micro["micro_index"],
+                            "block_id": f"{block.book_id}-{micro['label']}",
+                            "block_text": micro["text"],
+                            "word_count": micro["word_count"],
+                            "timestamp": block.timestamp.isoformat()
+                        }
+                        self.persistence.save_stage_output(
+                            stage="a",
+                            data=micro_data,
+                            book_id=clean_title,
+                            block_id=micro["label"]
+                        )
+                    self.logger.info(f"📦 Generati {len(micro_chunks)} micro-chunk per {chunk_label}")
+                    # ----------------------------------------------------
                     
                 except Exception as e:
                     self.logger.error(f"❌ Errore salvataggio blocco {block.block_id}: {e}")

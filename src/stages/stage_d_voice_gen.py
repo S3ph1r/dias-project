@@ -36,11 +36,13 @@ class StageDVoiceGeneratorProxy(BaseStage):
         super().__init__(
             stage_name="stage_d_voice_gen",
             stage_number=4,
-            input_queue="dias:queue:4:voice",
-            output_queue="dias:queue:5:music_gen",
+            input_queue=None, # Set below
+            output_queue=None, # Set below
             config=config,
             redis_client=redis_client
         )
+        self.input_queue = self.cfg.queues.voice
+        self.output_queue = self.cfg.queues.music
         self.persistence = DiasPersistence()
         from src.common.registry import ActiveTaskTracker
         print("DEBUG: ActiveTaskTracker imported")
@@ -74,9 +76,11 @@ class StageDVoiceGeneratorProxy(BaseStage):
             unique_aria_job_id = f"{clean_title}-{chunk_label}-{scene_id}"
 
             # --- SETUP DIRECTORY LOCALE (LXC 190) ---
-            local_dir = self.persistence.base_path / "data" / "stage_d" / "output" / clean_title / chunk_label
+            # Correzione: rimosso "data" ridondante (gia' presente in base_path)
+            # Organizzazione: Piatto dentro la cartella del libro (per separare WAV da JSON)
+            local_dir = self.persistence.base_path / "stage_d" / "output" / clean_title
             local_dir.mkdir(parents=True, exist_ok=True)
-            local_filename = f"{scene_id}.wav"
+            local_filename = f"{unique_aria_job_id}.wav"
             local_path = local_dir / local_filename
 
             # === STEP 1: CHECK LOCALE (LXC 190) ===
@@ -160,11 +164,12 @@ class StageDVoiceGeneratorProxy(BaseStage):
                     self.logger.warning(f"Identificato voice_id 'aura'. Sostituisco col default '{default_voice}'.")
                     voice_id = default_voice
             
-            self.aria_tts_queue = f"global:queue:tts:local:{target_model}:dias_pipeline"
+            # New Standard: aria:q:local:tts:{model}:{client}
+            self.aria_tts_queue = f"aria:q:local:tts:{target_model}:dias"
             
             aria_task = {
                 "job_id": unique_aria_job_id,
-                "client_id": "dias_pipeline",
+                "client_id": "dias",
                 "model_type": "tts",
                 "model_id": target_model,
                 "payload": {

@@ -55,9 +55,10 @@ redis:
 
 # Queue names (Redis Lists — BRPOP)
 queues:
-  ingestion: "dias:queue:1:ingestion"
-  semantic: "dias:queue:2:semantic"
-  voice: "dias:queue:4:voice"
+  ingestion: "dias:q:1:ingest"
+  semantic: "dias:q:2:semantic"
+  regia: "dias:q:3:regia"
+  voice: "dias:q:4:voice"
 
 # Storage
 storage:

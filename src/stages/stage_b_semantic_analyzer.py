@@ -131,8 +131,10 @@ class StageBSemanticAnalyzer(BaseStage):
             existing_analysis = self.persistence.load_stage_output("b", clean_title, chunk_label)
             if existing_analysis:
                 self.logger.info(f"⏭️ Skipping Gemini: Analisi già presente su disco per {clean_title}-{chunk_label}")
-                # Re-iniettiamo in Redis per sicurezza nel caso lo Stage C ne abbia bisogno
-                self._save_analysis_from_dict(existing_analysis, message)
+                
+                # --- NEW: Assicuriamoci che i micro-chunk siano distribuiti ---
+                self.logger.info(f"Checking micro-chunk distribution (from disk cache)...")
+                self._distribute_micro_chunks(existing_analysis, message)
                 
                 # Mark as Completed in Registry if it was skipped due to disk presence
                 self.tracker.mark_as_completed(book_id, registry_task_id, "disk_cache")
@@ -144,15 +146,13 @@ class StageBSemanticAnalyzer(BaseStage):
                     "job_id": existing_analysis.get("job_id", "skipped"),
                     "skipped": True,
                     "file_path": "already_exists",
-                    # Includi i dati completi per lo Stage C
-                    "entities": existing_analysis.get("entities", []),
-                    "relations": existing_analysis.get("relations", []),
-                    "concepts": existing_analysis.get("concepts", [])
+                    # Minimal info for skip result
+                    "entities_count": len(existing_analysis.get("entities", []))
                 }
             # ----------------------
             
-            # Mark as In-Flight in Registry
-            self.tracker.mark_as_inflight(book_id, registry_task_id, f"global:callback:dias:job-{book_id}-{block_id}") # Callback logic is internal to GatewayClient now
+            # Mark as In-Flight in Registry (aria:c:dias:job-...)
+            self.tracker.mark_as_inflight(book_id, registry_task_id, f"aria:c:dias:job-{book_id}-{block_id}")
 
             # Analizza semanticamente il testo
             self.logger.info("Starting semantic analysis...")
@@ -188,27 +188,25 @@ class StageBSemanticAnalyzer(BaseStage):
             
             # Use pre-extracted coherence fields
             # Salva checkpoint Stage B
+            # Use pre-extracted coherence fields
+            # Salva checkpoint Stage B (Macro Analysis)
             output_file = self.persistence.save_stage_output(self.STAGE_NAME, analysis_dict, clean_title, chunk_label)
             
-            # Mark as Completed in Registry
-            self.tracker.mark_as_completed(book_id, registry_task_id, output_file)
+            # Mark as Completed in Registry (Macro Task)
+            self.tracker.mark_as_completed(book_id, registry_task_id, str(output_file))
 
-            self.logger.info(f"Analysis saved to disk: {output_file}")
+            self.logger.info(f"Macro-Analysis saved to disk: {output_file}")
             
-            # Salva in Redis per Stage C passando i metadati originali
-            self.logger.info("Saving analysis to Redis...")
-            self._save_analysis(semantic_analysis, message)
+            # --- NEW: Distribuzione Micro-Chunk per Stage C ---
+            self.logger.info(f"Distributing micro-chunks for {chunk_label}...")
+            self._distribute_micro_chunks(analysis_dict, message)
             
             # Aggiungi info sul file salvato al risultato
             result["file_path"] = str(output_file)
             
             self.logger.info(f"=== Stage B Processing Completed Successfully ===")
-            self.logger.info(f"Analisi semantica completata per block {message['block_id']}: "
-                           f"{len(semantic_analysis.entities)} entità, "
-                           f"{len(semantic_analysis.relations)} relazioni, "
-                           f"{len(semantic_analysis.concepts)} concetti")
             
-                        # Rate limit stabilization (10s delay to avoid Gemini Free RPM limit)
+            # Rate limit stabilization
             import time
             delay = int(os.getenv('STAGE_B_STAGGER_DELAY', '10'))
             self.logger.info(f'Sleeping for {delay}s for rate limit stabilization...')
@@ -416,59 +414,87 @@ class StageBSemanticAnalyzer(BaseStage):
                 'confidence_score': 0.0
             }
     
-    def _save_analysis(self, analysis: MacroAnalysisResult, original_message: Dict[str, Any]):
+    def _distribute_micro_chunks(self, macro_analysis: Dict[str, Any], original_message: Dict[str, Any]):
         """
-        Salva l'analisi in Redis per Stage C
-        """
-        try:
-            # Converti a dict per salvataggio con conversione datetime
-            analysis_dict = analysis.model_dump()
-            
-            # Salva nella coda per Stage C
-            analysis_dict["clean_title"] = original_message.get("clean_title")
-            analysis_dict["chunk_label"] = original_message.get("chunk_label")
-            analysis_dict["book_metadata"] = original_message.get("book_metadata")
-            analysis_dict["block_index"] = original_message.get("block_index")
-            analysis_dict["book_id"] = original_message.get("book_id")
-            analysis_dict["block_id"] = original_message.get("block_id")
-            analysis_dict["job_id"] = analysis.job_id
-            
-            # Converti datetime a stringa ISO per JSON serialization
-            if 'processing_timestamp' in analysis_dict and analysis_dict['processing_timestamp']:
-                if hasattr(analysis_dict['processing_timestamp'], 'isoformat'):
-                    analysis_dict['processing_timestamp'] = analysis_dict['processing_timestamp'].isoformat()
-            
-            # Salva nella coda per Stage C
-            queue_name = self.output_queue
-            self.redis.push_to_queue(queue_name, analysis_dict)
-            
-            self.logger.info(f"Analisi {analysis.job_id} salvata in Redis per Stage C")
-            
-        except Exception as e:
-            self.logger.error(f"Errore nel salvataggio dell'analisi {analysis.job_id}: {e}")
-    
-    def _save_analysis_from_dict(self, analysis_dict: Dict[str, Any], original_message: Dict[str, Any]):
-        """
-        Salva un'analisi (caricata da disco) in Redis per Stage C
+        Scans disk for micro-chunks of the current macro-chunk,
+        creates simplified semantic context for each, and pushes to Stage C.
         """
         try:
-            # Porta avanti i metadati per il naming coerente nello Stage C
-            analysis_dict["clean_title"] = original_message.get("clean_title")
-            analysis_dict["chunk_label"] = original_message.get("chunk_label")
-            analysis_dict["book_metadata"] = original_message.get("book_metadata")
-            analysis_dict["block_index"] = original_message.get("block_index")
-            analysis_dict["book_id"] = original_message.get("book_id")
-            analysis_dict["block_id"] = original_message.get("block_id")
-            if "job_id" not in analysis_dict:
-                analysis_dict["job_id"] = original_message.get("job_id") or f"restored-{datetime.now().timestamp()}"
+            clean_title = original_message.get("clean_title")
+            macro_index = original_message.get("block_index")
+            book_id = original_message.get("book_id")
             
-            # Salva nella coda per Stage C
-            queue_name = self.output_queue
-            self.redis.push_to_queue(queue_name, analysis_dict)
-            self.logger.info(f"Analisi ripristinata salvata in Redis per Stage C")
+            # 1. Scan for micro-chunks in Stage A output
+            stage_a_path = self.persistence.base_path / "stage_a" / "output" / clean_title
+            if not stage_a_path.exists():
+                self.logger.error(f"Directory micro-chunk non trovata: {stage_a_path}")
+                return
+
+            # Pattern per trovare i micro-chunk di questo macro-chunk: *-chunk-001-micro-*.json
+            pattern = f"*-chunk-{macro_index:03d}-micro-*.json"
+            micro_files = sorted(list(stage_a_path.glob(pattern)))
             
+            if not micro_files:
+                self.logger.warning(f"Nessun micro-chunk trovato per macro-chunk {macro_index} in {stage_a_path}")
+                return
+
+            self.logger.info(f"Found {len(micro_files)} micro-chunks for distribution.")
+
+            # 2. Prepare Simplified Semantic Context (Bible)
+            # We only keep the essential "Character Bible" and the "Mood"
+            simplified_context = {
+                "entities": macro_analysis.get("entities", []),
+                "block_analysis": {
+                    "primary_emotion": macro_analysis.get("block_analysis", {}).get("primary_emotion", "neutro"),
+                    "secondary_emotion": macro_analysis.get("block_analysis", {}).get("secondary_emotion"),
+                    "setting": macro_analysis.get("block_analysis", {}).get("setting")
+                },
+                "macro_job_id": macro_analysis.get("job_id", "unknown"),
+                # Carry over metadata
+                "book_id": book_id,
+                "clean_title": clean_title,
+                "macro_index": macro_index,
+                "book_metadata": original_message.get("book_metadata")
+            }
+
+            # 3. Save and Enqueue each micro-chunk
+            for micro_file in micro_files:
+                # Extract micro_label from filename (e.g., chunk-001-micro-001)
+                # Filename is typically like: Book-Title-chunk-001-micro-001.json
+                parts = micro_file.stem.split("-")
+                micro_label = "-".join(parts[-4:]) # chunk-XXX-micro-YYY
+                
+                # Salva il contesto semplificato per questo specifico micro-chunk
+                self.persistence.save_stage_output(
+                    stage="b",
+                    data=simplified_context,
+                    book_id=clean_title,
+                    block_id=f"{micro_label}-semantic"
+                )
+                
+                # Push task to Stage C queue (dias:q:3:regia)
+                task_message = {
+                    "book_id": book_id,
+                    "clean_title": clean_title,
+                    "chunk_label": micro_label,
+                    "macro_index": macro_index,
+                    "micro_index": int(micro_label.split("-")[-1]),
+                    "job_id": f"job-{micro_label}",
+                    "stage": "semantic_micro",
+                    "timestamp": datetime.now().isoformat(),
+                    # I metadati del libro servono allo Stage C per caricare il testo
+                    "book_metadata": original_message.get("book_metadata")
+                }
+                
+                self.redis.push_to_queue(self.output_queue, task_message)
+                self.logger.debug(f"Pushed micro-chunk {micro_label} to Stage C queue.")
+
+            self.logger.info(f"✅ Distributed {len(micro_files)} micro-chunks to Stage C.")
+
         except Exception as e:
-            self.logger.error(f"Errore nel salvataggio dell'analisi ripristinata: {e}")
+            self.logger.error(f"Errore nella distribuzione dei micro-chunk: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
 
     def get_rate_limit_status(self) -> Dict[str, Any]:
         """

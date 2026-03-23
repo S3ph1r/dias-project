@@ -93,8 +93,8 @@ def stitch_partition(label: str, scenes: List[Dict]):
             chunk = s.get("chunk_label", "chunk-000")
             sid = s.get("scene_id")
             
-            # Local path in Brain cache
-            local_wav = STAGE_D_DIR / clean_title / chunk / f"{sid}.wav"
+            # Local path in Brain cache (Allineato a Stage D: Piatto dentro cartella libro)
+            local_wav = STAGE_D_DIR / clean_title / f"{clean_title}-{chunk}-{sid}.wav"
             
             if local_wav.exists():
                 f.write(f"file '{local_wav.resolve()}'\n")

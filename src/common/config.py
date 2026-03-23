@@ -64,17 +64,13 @@ class RedisConfig(BaseModel):
 
 class QueuesConfig(BaseModel):
     # Primary DIAS Pipeline Queues (Standardized)
-    ingestion: str = "dias:queue:1:ingestion"
-    semantic: str = "dias:queue:2:semantic"
-    voice: str = "dias:queue:4:voice"
-    
-    # Legacy/Extended Pipeline Stages
-    macro_analysis: str = "dias:queue:2:macro_analysis"
-    scene_director: str = "dias:queue:3:scene_director"
-    voice_gen: str = "dias:queue:4:voice_gen"
-    music_gen: str = "dias:queue:5:music_gen"
-    mixing: str = "dias:queue:6:mixing"
-    mastering: str = "dias:queue:7:mastering"
+    ingestion: str = "dias:q:1:ingest"
+    semantic: str = "dias:q:2:semantic"
+    regia: str = "dias:q:3:regia"
+    voice: str = "dias:q:4:voice"
+    music: str = "dias:q:5:music"
+    mixing: str = "dias:q:6:mixing"
+    mastering: str = "dias:q:7:mastering"
 
 
 class StorageConfig(BaseModel):

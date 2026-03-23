@@ -30,11 +30,12 @@ class BaseStage(ABC):
 
     Poi:
 
+        cfg = get_config() # Ottieni la configurazione
         stage = MyStage(
             stage_name="stage_a",
             stage_number=1,
-            input_queue="dias:queue:1:ingestion",
-            output_queue="dias:queue:2:macro_analysis",
+            input_queue=cfg.queues.ingestion,
+            output_queue=cfg.queues.semantic,
         )
         stage.run()
     """
@@ -43,7 +44,7 @@ class BaseStage(ABC):
         self,
         stage_name: str,
         stage_number: int,
-        input_queue: str,
+        input_queue: Optional[str] = None,
         output_queue: Optional[str] = None,
         config: Optional[DiasConfig] = None,
         redis_client: Optional[DiasRedis] = None,

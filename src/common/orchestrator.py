@@ -35,28 +35,38 @@ class SerialOrchestrator:
         
         self.base_dir = Path(__file__).resolve().parent.parent.parent
 
-    def get_total_chunks(self) -> int:
-        """Conta i chunk totali prodotti dallo Stage A"""
-        path = self.base_dir / "data" / "stage_a" / "output"
-        files = list(path.glob(f"{self.project_id}-chunk-*.json"))
-        return len(files)
+    def get_total_chunks(self, stage_id: str = "stage_a") -> int:
+        """Conta i task totali previsti in base allo stadio."""
+        if stage_id == "stage_d":
+            # Il totale degli item per lo Stage D corrisponde ai micro-json prodotti dallo Stage C
+            path = self.base_dir / "data" / "stage_c" / "output"
+            files = list(path.glob(f"{self.project_id}-chunk-*-scene-*.json"))
+            return len(files)
+        else:
+            # Per B e C, il totale corrisponde ai chunk madre dello Stage A
+            path = self.base_dir / "data" / "stage_a" / "output"
+            files = list(path.glob(f"{self.project_id}-chunk-*.json"))
+            return len(files)
 
     def get_completed_chunks(self, stage_id: str) -> int:
-        """Conta i chunk completati per uno specifico stadio"""
+        """Conta i chunk/scene completati per uno specifico stadio"""
         path = self.base_dir / "data" / stage_id / "output"
         if not path.exists():
             return 0
             
-        # Per Stage C contiamo i file di scena o il master
+        # Per Stage C contiamo i file master
         if stage_id == "stage_c":
-            # Guardiamo se esiste il master file che indica la fine del processo per quel chunk
-            # Esempio: Cronache-del-Silicio-chunk-000-scenes-20260313_071146.json
             files = list(path.glob(f"{self.project_id}-chunk-*-scenes-*.json"))
             return len(files)
         
-        # Per Stage B e D
+        # Per Stage D misuriamo in base ai WAV, garantendo che ci sia l'audio!
+        if stage_id == "stage_d":
+            files = list(path.rglob("*.wav"))
+            valid_files = [f for f in files if f.stat().st_size > 1000]
+            return len(valid_files)
+        
+        # Per Stage B
         files = list(path.glob(f"{self.project_id}-chunk-*.json"))
-        # Escludi file troppo piccoli (fallback falliti)
         valid_files = [f for f in files if f.stat().st_size > 1000]
         return len(valid_files)
 
@@ -169,7 +179,7 @@ class SerialOrchestrator:
     def run_stage(self, stage_info: Dict[str, Any]):
         """Avvia un worker e aspetta che finisca i chunk"""
         stage_id = stage_info["id"]
-        total = self.get_total_chunks()
+        total = self.get_total_chunks(stage_id)
         
         logger.info(f"--- 🚀 AVVIO {stage_info['name']} ({stage_id}) ---")
         

@@ -423,21 +423,21 @@ class SceneDirector(BaseStage):
     """Stage C - Segmenta blocchi in scene e genera audio scripts"""
     
     STAGE_NAME = "c"
-    QUEUE_NAME = "dias_stage_c_queue"
-    OUTPUT_QUEUE = "dias_stage_d_queue"
     
     def __init__(self, config_path: Optional[str] = None, logger: Optional[logging.Logger] = None, 
                  gemini_client: Optional[Any] = None):
         # Carica variabili d'ambiente
         load_dotenv()
         
-        # Setup staging names from config
-        from src.common.config import get_config
-        cfg = get_config() # Already loaded or uses default path
-        
         super().__init__(
             stage_name="scene_director",
             stage_number=3,
+            config_path=config_path,
+            logger=logger
+        )
+        # Use standardized queues from config
+        self.input_queue = self.cfg.queues.regia
+        self.output_queue = self.cfg.queues.voice
             input_queue=cfg.queues.semantic,
             output_queue=cfg.queues.voice,
             config=cfg,
@@ -486,43 +486,58 @@ class SceneDirector(BaseStage):
         self.logger.info(f"Validato: {data['entities_count']} entità, {data['relations_count']} relazioni, {data['concepts_count']} concetti")
         return True
         
-    def _load_macro_analysis(self, book_id: str, block_id: str, analysis_id: str) -> Dict[str, Any]:
-        """Carica analisi semantica da Stage B"""
+    def _load_macro_analysis(self, book_id: str, block_id: str, job_id: str = None) -> Dict[str, Any]:
+        """Carica analisi semantica da Stage B (Micro o Macro)"""
         try:
-            # Cerca in stage_b/output - Cerca tutti i .json e verifica block_id internamente
-            stage_b_path = self.persistence.base_path / "stage_b" / "output"
-            # Cerchiamo di ottimizzare basandoci sul filename se possibile, altrimenti scansione totale
-            for file in stage_b_path.glob("*.json"):
-                try:
-                    with open(file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        if data.get("block_id") == block_id:
-                            # Trovato! 
-                            if data.get("book_id") != book_id:
-                                self.logger.info(f"Mapping book_id mismatch: {data.get('book_id')} -> {book_id}")
-                            return data
-                except Exception:
-                    continue
-                    
-            raise FileNotFoundError(f"Analisi non trovata per block_id={block_id} in {stage_b_path}")
+            # Coherence check for clean title
+            clean_title = "".join([c if c.isalnum() else "-" for c in book_id]).strip("-")
+            
+            # 1. Prova caricamento diretto basato sul nome (Micro-Chunk)
+            # block_id nello Stage C è ora la chunk_label (es: chunk-001-micro-001)
+            micro_semantic_label = f"{block_id}-semantic"
+            data = self.persistence.load_stage_output("b", clean_title, micro_semantic_label)
+            if data:
+                return data
+            
+            # 2. Fallback: logica di scansione originale
+            stage_b_path = self.persistence.base_path / "stage_b" / "output" / clean_title
+            if stage_b_path.exists():
+                for file in stage_b_path.glob("*.json"):
+                    try:
+                        with open(file, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            if data.get("block_id") == block_id:
+                                return data
+                    except Exception:
+                        continue
+                        
+            raise FileNotFoundError(f"Analisi non trovata per block_id={block_id} in Stage B")
                 
         except Exception as e:
             self.logger.error(f"Errore caricamento analisi: {e}")
             raise
             
     def _load_text_block(self, book_id: str, block_id: str) -> str:
-        """Carica blocco testo da Stage A"""
+        """Carica blocco testo da Stage A (Micro o Macro)"""
         try:
-            stage_a_path = self.persistence.base_path / "stage_a" / "output"
-            self.logger.info(f"DEBUG: stage_a_path={stage_a_path}")
-            for file in stage_a_path.glob("*.json"):
-                try:
-                    with open(file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        if data.get("book_id") == book_id and data.get("block_id") == block_id:
-                            return data.get("block_text", "")
-                except Exception:
-                    continue
+            clean_title = "".join([c if c.isalnum() else "-" for c in book_id]).strip("-")
+            
+            # 1. Prova caricamento diretto (Micro-Chunk)
+            data = self.persistence.load_stage_output("a", clean_title, block_id)
+            if data:
+                return data.get("block_text", "")
+            
+            # 2. Fallback: logica di scansione originale
+            stage_a_path = self.persistence.base_path / "stage_a" / "output" / clean_title
+            if stage_a_path.exists():
+                for file in stage_a_path.glob("*.json"):
+                    try:
+                        with open(file, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            if data.get("book_id") == book_id and data.get("block_id") == block_id:
+                                return data.get("block_text", "")
+                    except Exception:
+                        continue
                     
             raise FileNotFoundError(f"Blocco testo non trovato per book_id={book_id}, block_id={block_id}")
                 
@@ -676,10 +691,14 @@ class SceneDirector(BaseStage):
         primary_emotion = block_analysis.get("primary_emotion", "neutro")
         
         # Mock scene object per i generatori esistenti
+        # --- NEW: Hierarchical Scene ID for Idempotency ---
+        # Format: chunk-001-micro-001-scene-001
+        scene_id = f"{chunk_label}-scene-{scene_num:03d}"
+
         mock_scene = {
             "primary_emotion": primary_emotion,
             "word_count": len(dynamic_scene["clean_text"].split()),
-            "scene_id": f"scene-{scene_num:03d}"
+            "scene_id": scene_id
         }
 
         # Genera voice direction (tecnica)
@@ -733,38 +752,35 @@ class SceneDirector(BaseStage):
                 
             # Coherence: Use normalized IDs from the message
             raw_book_id = item.get("book_id", "unknown")
-            clean_title = item.get("clean_title") or self.persistence.normalize_id(raw_book_id)
-            book_id = clean_title  # Force book_id to be the canonical title
-            
-            block_id = item["block_id"]
+            clean_title = item.get("clean_title") or self.persistence.no            block_id = item.get("chunk_label") or item.get("block_id") # Micro-chunk label as primary ID
             
             # --- JOB ID PERSISTENCE ---
             if not item.get("job_id"):
                 # Se non c'è, lo generiamo e lo salviamo nell'item originale
-                # Questo permette alla BaseStage di riaccodare lo stesso ID in caso di timeout
                 import hashlib
-                chunk_label_tmp = item.get("chunk_label") or f"chunk-{item.get('block_index', 0):03d}"
-                stable_id_str = f"{book_id}|{chunk_label_tmp}|stage_c"
+                stable_id_str = f"{book_id}|{block_id}|stage_c_v2"
                 job_hash = hashlib.sha256(stable_id_str.encode()).hexdigest()[:12]
                 item["job_id"] = f"job-{job_hash}"
-                self.logger.info(f"Persisting NEW stable job_id in Stage C item: {item['job_id']}")
-            else:
-                self.logger.info(f"Reusing EXISTING job_id in Stage C item: {item['job_id']}")
+                self.logger.info(f"Persisting NEW stable job_id: {item['job_id']}")
                 
             job_id = item["job_id"]
             # --------------------------
             
-            # Carica dati necessari
+            # Carica dati (ora usano la logica ottimizzata per micro-chunk)
             macro_analysis = self._load_macro_analysis(book_id, block_id, job_id)
             text_content = self._load_text_block(book_id, block_id)
             
             if not text_content:
-                self.logger.error("Testo blocco vuoto")
+                self.logger.error(f"Testo blocco vuoto per {block_id}")
                 return None
 
             # --- SKIPPING LOGIC ---
-            chunk_label = item.get("chunk_label") or f"chunk-{item.get('block_index', 0):03d}"
-            self.logger.info(f"DEBUG Stage C: processing {clean_title}-{chunk_label} (block_id={block_id}, job_id={job_id})")
+            chunk_label = block_id # e.g. chunk-001-micro-001
+            self.logger.info(f"🎬 Stage C: processing {clean_title}-{chunk_label}")
+            
+            # Registry task ID for Stage C
+            registry_task_id = f"stage_c_{chunk_label}"
+")
             
             # Registry task ID for Stage C
             registry_task_id = f"stage_c_{chunk_label}"
@@ -797,8 +813,8 @@ class SceneDirector(BaseStage):
                 }
             # ----------------------
 
-            # Mark as In-Flight in Registry
-            self.tracker.mark_as_inflight(book_id, registry_task_id, f"global:callback:dias:job-{book_id}-{chunk_label}")
+            # Mark as In-Flight in Registry (aria:c:dias:job-...)
+            self.tracker.mark_as_inflight(book_id, registry_task_id, f"aria:c:dias:job-{book_id}-{chunk_label}")
 
             # 1. Chiamata UNICA a Gemini per segmentazione e normalizzazione
             self.logger.info("🎬 Generazione scene dinamiche (Emotional Beats)...")
@@ -821,8 +837,9 @@ class SceneDirector(BaseStage):
             # clean_title and chunk_label are already defined above and aligned
             
             for i, d_scene in enumerate(dynamic_scenes):
+                # scene_num starts from 1 for each micro-chunk
                 script = self._create_scene_script_dynamic(
-                    d_scene, i, macro_analysis, book_id, chunk_label, clean_title, "chapter_001", job_id
+                    d_scene, i + 1, macro_analysis, book_id, chunk_label, clean_title, "chapter_001", job_id
                 )
                 scene_scripts.append(script)
                 

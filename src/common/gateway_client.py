@@ -29,10 +29,12 @@ class GatewayClient:
         self, 
         contents: List[Dict[str, Any]], 
         model_id: Optional[str] = None, 
+        model_type: str = "cloud", # "cloud" or "local"
+        provider: str = "google",   # "google", "openai", "local"
         config: Optional[Dict[str, Any]] = None,
         job_id_meta: Optional[Dict[str, str]] = None,
-        timeout: int = 1200, # 20 minutes default for cloud tasks
-        job_id: Optional[str] = None  # Explicit job_id if already generated
+        timeout: int = 1200, 
+        job_id: Optional[str] = None 
     ) -> Dict[str, Any]:
         """
         Sends a generation task to the Gateway and waits for the result.
@@ -65,7 +67,8 @@ class GatewayClient:
             self.logger.info(f"Generated random job_id: {job_id}")
             
         model_id = model_id or self.cfg.google.model_flash_lite
-        callback_key = f"global:callback:{self.client_id}:{job_id}"
+        # New Standard: aria:c:{client}:{job}
+        callback_key = f"aria:c:{self.client_id}:{job_id}"
         
         # 2. Check Mailbox (Persistence)
         # Check if a result already exists in the callback queue (e.g., from a pre-crash task)
@@ -78,8 +81,8 @@ class GatewayClient:
         payload = {
             "job_id": job_id,
             "client_id": self.client_id,
-            "model_type": "cloud",
-            "provider": "google",
+            "model_type": model_type,
+            "provider": provider,
             "model_id": model_id,
             "callback_key": callback_key,
             "payload": {
@@ -90,8 +93,9 @@ class GatewayClient:
         }
         
         # 4. Submit Task
-        queue_key = f"global:queue:cloud:google:{model_id}:{self.client_id}"
-        self.logger.info(f"Submitting task {job_id} to Gateway queue: {queue_key}")
+        # New Standard: aria:q:{env}:{prov}:{model}:{client}
+        queue_key = f"aria:q:{model_type}:{provider}:{model_id}:{self.client_id}"
+        self.logger.info(f"Submitting task {job_id} to ARIA queue: {queue_key}")
         self.redis.client.lpush(queue_key, json.dumps(payload))
         
         # 5. Wait for Result (BRPOP)

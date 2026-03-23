@@ -53,8 +53,8 @@ class TestTextIngester:
         """Test TextIngester initialization."""
         assert text_ingester.stage_name == "text_ingester"
         assert text_ingester.stage_number == 1
-        assert text_ingester.input_queue == "dias:queue:0:upload"
-        assert text_ingester.output_queue == "dias:queue:1:ingestion"
+        assert text_ingester.input_queue == "dias:q:0:upload"
+        assert text_ingester.output_queue == "dias:q:1:ingest"
         assert text_ingester.redis == dias_redis
         assert text_ingester.chunk_size == 2500
         assert text_ingester.overlap_size == 500
@@ -274,7 +274,7 @@ class TestTextIngester:
                     assert result["chunks_pushed"] > 0
                     
                     # Check that chunks were pushed to queue
-                    queue_items = dias_redis._client.lrange("dias:queue:1:ingestion", 0, -1)
+                    queue_items = dias_redis._client.lrange("dias:q:1:ingest", 0, -1)
                     assert len(queue_items) == result["chunks_pushed"]
                     
                 finally:
