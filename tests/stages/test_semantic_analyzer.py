@@ -34,80 +34,80 @@ from common.redis_client import DiasRedis
 
 class TestGeminiRateLimiter:
     """Test suite per il rate limiter di Gemini API"""
-    
+
     def test_rate_limiter_initialization(self):
         """Test inizializzazione rate limiter"""
         limiter = GeminiRateLimiter(requests_per_interval=2, interval_minutes=10)
-        
+
         assert limiter.requests_per_interval == 2
         assert limiter.interval.total_seconds() == 600  # 10 minuti
         assert len(limiter.request_times) == 0
-    
+
     def test_can_make_request_initially(self):
         """Test che inizialmente possiamo fare richieste"""
         limiter = GeminiRateLimiter(requests_per_interval=1, interval_minutes=5)
-        
+
         assert limiter.can_make_request() == True
-    
+
     def test_rate_limit_blocking(self):
         """Test che il rate limiter blocca dopo il limite"""
         limiter = GeminiRateLimiter(requests_per_interval=1, interval_minutes=0.1)  # 6 secondi
-        
+
         # Prima richiesta dovrebbe passare
         assert limiter.can_make_request() == True
         limiter.request_times.append(datetime.now())
-        
+
         # Seconda richiesta dovrebbe essere bloccata
         assert limiter.can_make_request() == False
-    
+
     def test_wait_for_slot(self):
         """Test attesa per slot disponibile"""
         limiter = GeminiRateLimiter(requests_per_interval=1, interval_minutes=0.05)  # 3 secondi
-        
+
         # Aggiungi richiesta recente
         limiter.request_times.append(datetime.now())
-        
+
         # Test che aspetta correttamente
         start_time = time.time()
         wait_time = limiter.wait_for_slot()
         end_time = time.time()
-        
+
         # Dovrebbe aver atteso circa 3 secondi
         assert end_time - start_time >= 2.5  # Con tolleranza
         # Dopo wait_for_slot, abbiamo usato lo slot, quindi non dovrebbe essere disponibile
         assert limiter.can_make_request() == False
-        
+
         # Aspetta che il tempo scada e verifica che diventi disponibile
         time.sleep(3.5)
         assert limiter.can_make_request() == True
-    
+
     def test_get_status(self):
         """Test ottenimento stato del rate limiter"""
         limiter = GeminiRateLimiter(requests_per_interval=2, interval_minutes=5)
-        
+
         # Aggiungi una richiesta
         limiter.request_times.append(datetime.now())
-        
+
         status = limiter.get_status()
-        
+
         assert status['requests_in_interval'] == 1
         assert status['max_requests'] == 2
         assert status['interval_minutes'] == 5
         assert status['can_make_request'] == True
-    
+
     def test_reset(self):
         """Test reset del rate limiter"""
         limiter = GeminiRateLimiter()
-        
+
         # Aggiungi richieste
         limiter.request_times.append(datetime.now())
         limiter.request_times.append(datetime.now())
-        
+
         assert len(limiter.request_times) == 2
-        
+
         # Reset
         limiter.reset()
-        
+
         assert len(limiter.request_times) == 0
 
 
@@ -230,18 +230,18 @@ class TestStageBSemanticAnalyzer:
         """Test integrazione con rate limiter"""
         # Reset rate limiter
         gemini_rate_limiter.reset()
-        
+
         message = {
             "block_id": "block_123",
             "book_id": "book_456",
             "text": "Testo di esempio per test rate limit",
             "metadata": {}
         }
-        
+
         # Prima richiesta dovrebbe andare bene
         result1 = analyzer.process(message)
         assert result1["status"] == "success"
-        
+
         # Seconda richiesta dovrebbe essere gestita dal rate limiter
         # (ma dovrebbe comunque andare a buon fine con attesa)
         result2 = analyzer.process(message)

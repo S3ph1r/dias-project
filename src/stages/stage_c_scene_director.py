@@ -15,10 +15,12 @@ import logging
 import os
 import sys
 import time
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from num2words import num2words
 
 
 # sys.path.insert is handled if needed
@@ -318,6 +320,10 @@ class TextDirector:
                 # Retrocompatibilità: genera has_dialogue dal campo speaker
                 scene["has_dialogue"] = scene.get("speaker") is not None
 
+                # Applica normalizzazione fonetica deterministica
+                if "clean_text" in scene:
+                    scene["clean_text"] = self._apply_phonetic_normalization(scene["clean_text"])
+
             self.logger.info(f"TextDirector Qwen3 OK | Generate {len(scenes_list)} scene dinamiche strutturate")
             return scenes_list
 
@@ -361,6 +367,22 @@ class TextDirector:
         text = re.sub(r'\n{3,}', '\n\n', text)
         
         return text.strip()
+
+    def _apply_phonetic_normalization(self, text: str) -> str:
+        """
+        Applica normalizzazione fonetica robusta: converte solo numeri in lettere usando num2words.
+        Evita dizionari fissi come richiesto.
+        """
+        # Convert numbers to words in Italian
+        def replace_number(match):
+            num_str = match.group()
+            try:
+                return num2words(int(num_str), lang='it')
+            except ValueError:
+                return num_str
+
+        text = re.sub(r'\b\d+\b', replace_number, text)
+        return text
 
 
 class SceneDirector(BaseStage):
@@ -623,7 +645,7 @@ class SceneDirector(BaseStage):
 
         # Genera voice direction (tecnica)
         voice_direction = self._generate_voice_direction(mock_scene, macro_analysis)
-        
+
         # Genera audio layers (musica e ambiente basati sull'emozione)
         audio_layers = self._generate_audio_layers(mock_scene, macro_analysis)
 
