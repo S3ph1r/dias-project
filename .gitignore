@@ -29,6 +29,7 @@ tests/*.json
 *.log
 *.tmp
 *.bak
+*.pid
 
 # Documentazione Archivio e Backup
 docs/backups/
