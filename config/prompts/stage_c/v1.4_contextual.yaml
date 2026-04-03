@@ -30,6 +30,9 @@ prompt_template: |
   PERSONAGGI E LORO STILE VOCALE (speaking_style da Stage B):
   {entities_speaking_styles}
 
+  RELAZIONI TRA PERSONAGGI (da Stage B):
+  {character_relationships}
+
   ════════════════════════════════════════════════════
   FASE 1: SEGMENTAZIONE IN MICRO-SCENE (MANDATORIO)
   ════════════════════════════════════════════════════

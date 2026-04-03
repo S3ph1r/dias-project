@@ -9,10 +9,31 @@ export interface ProjectStage {
 export interface Project {
     id: string;
     name: string;
+    status: string;
+    active_stage: string | null;
     last_modified: string;
     total_chunks?: number;
     overall_progress?: number;
     stages?: ProjectStage[];
+}
+
+export interface Scene {
+    id: string;
+    wav_url: string | null;
+    text: string;
+    instruct: string;
+    voice: string;
+}
+
+export interface ChapterSummary {
+    chunk_id: string;
+    chunk_index: number;
+    title: string;
+    scenes: Scene[];
+    scene_count: number;
+    wav_count: number;
+    status: 'pending' | 'scripted' | 'in_progress' | 'voice_done';
+    progress_pct: number;
 }
 
 export interface AriaNode {
@@ -22,7 +43,42 @@ export interface AriaNode {
     available_voices: string[];
 }
 
-const API_BASE = 'http://192.168.1.190:8000';
+export interface CharacterProfile {
+    name: string;
+    role_category: 'primary' | 'secondary' | 'tactical';
+    role_description: string;
+    traits: string;
+    vocal_profile: string;
+}
+
+export interface ChapterFingerprint {
+    id: string;
+    title: string;
+    summary: string;
+}
+
+export interface Fingerprint {
+    metadata: {
+        title: string;
+        author: string;
+        genre?: string;
+        tone?: string;
+    };
+    chapters?: ChapterFingerprint[];
+    chapters_list?: ChapterFingerprint[];
+    casting?: {
+        narrator: { vibe: string; style: string };
+        characters: CharacterProfile[];
+    };
+}
+
+export interface PreproductionData {
+    casting: Record<string, string>;
+    palette_choice?: string;
+    global_voice?: string;
+}
+
+export const API_BASE = 'http://192.168.1.190:8000';
 
 export async function fetchProjects(): Promise<Project[]> {
     const res = await fetch(`${API_BASE}/projects`);
@@ -57,7 +113,7 @@ export async function fetchAriaNodes(): Promise<AriaNode[]> {
     return res.json();
 }
 
-export async function fetchVoices(): Promise<{ voices: string[] }> {
+export async function fetchVoices(): Promise<{ voices: Record<string, any> }> {
     const res = await fetch(`${API_BASE}/info/voices`);
     if (!res.ok) throw new Error('Failed to fetch voices');
     return res.json();
@@ -92,5 +148,63 @@ export async function resumePipeline(projectId: string, voiceOverride?: string):
         })
     });
     if (!res.ok) throw new Error('Failed to resume pipeline');
+    return res.json();
+}
+
+export async function fetchChapters(projectId: string): Promise<ChapterSummary[]> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/chapters`);
+    if (!res.ok) throw new Error('Failed to fetch chapters');
+    return res.json();
+}
+
+export async function fetchSceneMetrics(projectId: string, sceneId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/scenes/${sceneId}/metrics`);
+    if (!res.ok) throw new Error('Failed to fetch scene metrics');
+    return res.json();
+}
+
+export async function retryScene(projectId: string, sceneId: string, instruct?: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/scenes/${sceneId}/retry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruct })
+    });
+    if (!res.ok) throw new Error('Failed to retry scene');
+    return res.json();
+}
+
+export async function fetchFingerprint(projectId: string): Promise<Fingerprint> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/fingerprint`);
+    if (!res.ok) throw new Error('Failed to fetch fingerprint');
+    return res.json();
+}
+
+export async function fetchPreproduction(projectId: string): Promise<PreproductionData> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/preproduction`);
+    if (!res.ok) throw new Error('Failed to fetch pre-production data');
+    return res.json();
+}
+
+export async function savePreproduction(projectId: string, data: PreproductionData): Promise<any> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/preproduction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) throw new Error('Failed to save pre-production data');
+    return res.json();
+}
+
+export async function analyzeProject(projectId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/analyze`, {
+        method: 'POST'
+    });
+    if (!res.ok) throw new Error('Failed to start analysis');
+    return res.json();
+}
+
+export async function fetchWorkerStatus(): Promise<{ workers: Record<string, 'running' | 'stopped'> }> {
+    const res = await fetch(`${API_BASE}/system/workers`);
+    if (!res.ok) throw new Error('Failed to fetch worker status');
     return res.json();
 }

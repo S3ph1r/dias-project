@@ -17,56 +17,149 @@ class DateTimeEncoder(json.JSONEncoder):
         return super().default(obj)
 
 class DiasPersistence:
-    """Gestore persistenza file-based per DIAS"""
+    """Gestore persistenza file-based per DIAS con supporto multi-progetto"""
     
-    def __init__(self, base_path: Optional[str] = None):
+    def __init__(self, base_path: Optional[str] = None, project_id: Optional[str] = None):
         if base_path:
             self.base_path = Path(base_path)
         else:
-            # 1. Cerca variabile d'ambiente
             env_path = os.environ.get("DIAS_DATA_DIR")
             if env_path:
                 self.base_path = Path(env_path)
             else:
-                # 2. Default basato sulla posizione del file (root del progetto /data)
                 self.base_path = Path(__file__).parent.parent.parent / "data"
         
+        self.project_id = project_id
+        if self.project_id:
+            # Nuova struttura: data/projects/{project_id}/
+            self.project_root = self.base_path / "projects" / self.project_id
+        else:
+            # Struttura legacy: data/
+            self.project_root = self.base_path
+
         self.logger = logging.getLogger(__name__)
-        
-        # Crea struttura directory se non esiste
         self._ensure_directories()
+
+    def get_fingerprint_path(self) -> Path:
+        """Restituisce il path standard per il file Intelligence (fingerprint.json)"""
+        if self.project_id:
+            # Stage 0 output directory mapping
+            return self.project_root / "stages" / "stage_0" / "output" / "fingerprint.json"
+        return self.base_path / "fingerprint.json"
+
+    def get_preproduction_path(self) -> Path:
+        """Restituisce il path standard per il dossier di pre-produzione (casting, etc.)"""
+        if self.project_id:
+            return self.project_root / "stages" / "stage_0" / "output" / "preproduction.json"
+        return self.base_path / "preproduction.json"
+
+    def get_source_text_path(self) -> Optional[Path]:
+        """Trova il file .txt sorgente nella cartella source/ del progetto"""
+        if not self.project_id:
+            return None
+        source_dir = self.project_root / "source"
+        if not source_dir.exists():
+            return None
+        # Cerca il primo file .txt
+        txt_files = list(source_dir.glob("*.txt"))
+        return txt_files[0] if txt_files else None
+
+    def get_normalized_text_path(self) -> Optional[Path]:
+        """Trova il file .txt normalizzato nella cartella stage_0/output/"""
+        if not self.project_id:
+            return None
+        output_dir = self.project_root / "stages" / "stage_0" / "output"
+        if not output_dir.exists():
+            return None
+        # Cerca i file .txt (dovrebbe essercene solo uno)
+        txt_files = list(output_dir.glob("*.txt"))
+        return txt_files[0] if txt_files else None
+
+    def load_config(self) -> Dict[str, Any]:
+        """Carica il file config.json del progetto"""
+        if not self.project_id:
+            return {}
+        config_path = self.project_root / "config.json"
+        if not config_path.exists():
+            return {}
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            self.logger.error(f"Errore caricamento config: {e}")
+            return {}
+
+    def save_config(self, config: Dict[str, Any]):
+        """Salva il file config.json del progetto"""
+        if not self.project_id:
+            return
+        config_path = self.project_root / "config.json"
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            self.logger.error(f"Errore salvataggio config: {e}")
+
+    def update_project_config(self, updates: Dict[str, Any]):
+        """Aggiorna chiavi specifiche nel config.json"""
+        config = self.load_config()
+        config.update(updates)
+        self.save_config(config)
 
     @staticmethod
     def normalize_id(text: str) -> str:
         """
         Normalizza un titolo o ID per l'uso coerente nei nomi dei file.
-        Esempio: "Cronache del Silicio" -> "Cronache-del-Silicio"
+        Esempio: "Il Silenzio! dei Chip.pdf" -> "il_silenzio_dei_chip"
         """
         if not text:
             return "unknown"
-        # Sostituisce spazi e caratteri non alfanumerici con hyphens
-        normalized = "".join([c if c.isalnum() else "-" for c in text])
-        # Rimuove hyphens duplicati e pulisce estremità
         import re
-        normalized = re.sub(r'-+', '-', normalized).strip("-")
-        return normalized
+        import os
+        # Rimuove estensione se presente
+        name = os.path.splitext(text)[0]
+        # Lowercase e sostituisce TUTTO quello che non è alfanumerico con _
+        name = re.sub(r'[^a-zA-Z0-9]', '_', name.lower())
+        # Rimuove underscores duplicati e pulisce estremità
+        name = re.sub(r'_+', '_', name).strip('_')
+        return name
 
     def _ensure_directories(self):
         """Assicura che tutte le directory esistano"""
-        dirs = [
-            "stage_a/input", "stage_a/output",
-            "stage_b/input", "stage_b/output", 
-            "stage_c/input", "stage_c/output",
-            "stage_d/input", "stage_d/output",
-            "final", "logs"
-        ]
+        if self.project_id:
+            # Struttura moderna isolata per progetto
+            dirs = [
+                "source",
+                "stages/stage_0/output",
+                "stages/stage_a/output", 
+                "stages/stage_b/output", 
+                "stages/stage_b2/output",
+                "stages/stage_c/output",
+                "stages/stage_d/output",
+                "stages/stage_e/output",
+                "stages/stage_f/output",
+                "final",
+                "logs"
+            ]
+            root = self.project_root
+        else:
+            # Struttura legacy globale
+            dirs = [
+                "stage_a/input", "stage_a/output",
+                "stage_b/input", "stage_b/output", 
+                "stage_c/input", "stage_c/output",
+                "stage_d/input", "stage_d/output",
+                "final", "logs"
+            ]
+            root = self.base_path
         
         for dir_name in dirs:
-            path = self.base_path / dir_name
+            path = root / dir_name
             path.mkdir(parents=True, exist_ok=True)
     
     def save_stage_input(self, stage: str, data: Dict[str, Any], book_id: str, 
-                        block_id: Optional[str] = None) -> str:
+                        block_id: Optional[str] = None,
+                        include_timestamp: bool = True) -> str:
         """Salva input di uno stage"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
@@ -74,9 +167,19 @@ class DiasPersistence:
         if block_id:
             components.append(block_id)
         
-        filename = "-".join(components) + f"-{timestamp}.json"
+        if include_timestamp:
+            filename = "-".join(components) + f"-{timestamp}.json"
+        else:
+            filename = "-".join(components) + ".json"
         
-        filepath = self.base_path / f"stage_{stage}" / "input" / filename
+        # Routing: Project-specific vs Legacy
+        if self.project_id:
+            output_dir = self.project_root / "stages" / f"stage_{stage}" / "output" # Scriviamo in output per praticità
+        else:
+            output_dir = self.base_path / f"stage_{stage}" / "input"
+            
+        output_dir.mkdir(parents=True, exist_ok=True)
+        filepath = output_dir / filename
         
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
@@ -92,30 +195,48 @@ class DiasPersistence:
     def save_stage_output(self, stage: str, data: Dict[str, Any], book_id: str,
                          block_id: Optional[str] = None,
                          scene_id: Optional[str] = None,
-                         custom_filename: Optional[str] = None) -> str:
+                         custom_filename: Optional[str] = None,
+                         include_timestamp: bool = True) -> str:
         """Salva output di uno stage"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # Coherence: Force normalization on book_id (which is our project title)
         book_id = self.normalize_id(book_id)
         
-        components = [book_id]
+        components = []
         if block_id:
-            components.append(block_id)
+            # Se block_id contiene già book_id- all'inizio, non raddoppiarlo
+            if block_id.startswith(f"{book_id}-"):
+                components.append(block_id)
+            else:
+                components.append(f"{book_id}-{block_id}")
+        else:
+            components.append(book_id)
+            
         if scene_id:
             components.append(scene_id)
         if custom_filename:
             components.append(custom_filename)
         
-        filename = "-".join(components) + f"-{timestamp}.json"
+        if include_timestamp:
+            filename = "-".join(components) + f"-{timestamp}.json"
+        else:
+            filename = "-".join(components) + ".json"
         
-        filepath = self.base_path / f"stage_{stage}" / "output" / filename
+        # Routing: Project-specific vs Legacy
+        if self.project_id:
+            output_dir = self.project_root / "stages" / f"stage_{stage}" / "output"
+        else:
+            output_dir = self.base_path / f"stage_{stage}" / "output"
+            
+        output_dir.mkdir(parents=True, exist_ok=True)
+        filepath = output_dir / filename
         
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
             
-            self.logger.info(f"✅ Salvato output Stage {stage} (Coerenza): {filepath}")
+            self.logger.info(f"✅ Salvato output Stage {stage}: {filepath}")
             return str(filepath)
             
         except Exception as e:
@@ -135,17 +256,29 @@ class DiasPersistence:
     def load_stage_output(self, stage: str, book_id: str, 
                          block_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Carica l'ultimo output di uno stage per book_id e block_id"""
-        output_dir = self.base_path / f"stage_{stage}" / "output"
+        # Routing: Project-specific vs Legacy
+        if self.project_id:
+            output_dir = self.project_root / "stages" / f"stage_{stage}" / "output"
+        else:
+            output_dir = self.base_path / f"stage_{stage}" / "output"
         
+        if not output_dir.exists():
+            return None
+
+        book_id = self.normalize_id(book_id)
         if block_id:
-            pattern = f"{book_id}-{block_id}-*.json"
+            # Se block_id contiene già book_id- all'inizio, non raddoppiarlo
+            if block_id.startswith(f"{book_id}-"):
+                pattern = f"{block_id}*.json"
+            else:
+                pattern = f"{book_id}-{block_id}*.json"
         else:
             pattern = f"{book_id}-*.json"
         
         files = list(output_dir.glob(pattern))
         
         if not files:
-            self.logger.warning(f"⚠️ Nessun output trovato per {book_id}_{block_id}")
+            # self.logger.warning(f"⚠️ Nessun output trovato per {book_id}_{block_id}")
             return None
         
         # Prendi il file più recente

@@ -1,0 +1,110 @@
+version: "1.7.1"
+date: "2026-03-29"
+description: |
+  Universal Theatrical Orchestrator Prompt — Versione di Produzione.
+  - Dialoghi: Ogni speaker ha la sua scena isolata (per il casting vocale).
+  - Fonetica: Regole universali per accenti tonici e respelling (zero hardcoding).
+  - Segmentazione: Per cambio emotivo, non per conteggio parole.
+  - Punteggiatura: Ottimizzata per Qwen3-TTS (trattino largo vs puntini).
+  - Titoli: Isolamento obbligatorio in scena singola.
+prompt_template: |
+  Sei un DIRETTORE ARTISTICO esperto in audiolibri professionali di alta qualità.
+  Il tuo compito è trasformare un blocco di testo narrativo in una sequenza di MICRO-SCENE AUDIO
+  ottimizzate per un motore TTS (Qwen3-TTS 1.7B, Zero-Shot).
+
+  ════════════════════════════════════════════════════
+  CONTESTO DEL CAPITOLO — LEGGI PRIMA DI TUTTO
+  ════════════════════════════════════════════════════
+
+  IMPORTANTE: Il TTS è AMNESICO. Ogni istruzione deve essere COMPLETAMENTE AUTOSUFFICIENTE.
+
+  TONO BASE DEL NARRATORE per questo capitolo:
+  {narrator_base_tone}
+
+  EMOZIONE DOMINANTE DEL BLOCCO: {primary_emotion}
+  EMOZIONE SECONDARIA: {secondary_emotion}
+
+  ARCO EMOTIVO DEL CAPITOLO:
+  {narrative_arc}
+
+  PERSONAGGI E LORO STILE VOCALE:
+  {entities_speaking_styles}
+
+  ════════════════════════════════════════════════════
+  FASE 1: SEGMENTAZIONE IN MICRO-SCENE
+  ════════════════════════════════════════════════════
+
+  REGOLA PRINCIPALE — CAMBIO EMOTIVO:
+  Spezza il testo ogni volta che cambia l'emozione dominante, il registro narrativo o il parlante.
+  Non esiste un limite fisso di parole: una scena può contenere poche parole se ha un'unità emotiva precisa,
+  o arrivare a 150-200 parole se il tono rimane uniforme. Il criterio è sempre e solo il battito emotivo.
+
+  REGOLA TITOLI E CAPITOLI (ISOLAMENTO OBBLIGATORIO):
+  Ogni titolo di libro, capitolo, parte o sezione deve essere isolato in una scena dedicata e separata,
+  con "speaker": "Narratore". Non incollare mai un titolo alla prima riga del testo che segue.
+
+  REGOLA ASSOLUTA PER I DIALOGHI E IL CASTING VOCALE:
+  Il sistema assegna una voce diversa a ogni personaggio: per farlo funzionare, ogni battuta di un singolo
+  personaggio deve essere una scena separata.
+  - Il campo "speaker" contiene SOLO il nome esatto di UN singolo personaggio o "Narratore".
+  - La battuta pronunciata da un personaggio → scena isolata con "speaker": "NomePersonaggio".
+  - La cornice narrativa (es. "disse Davis, guardandosi attorno") → scena separata con "speaker": "Narratore".
+  - VIETATO: stringhe composite come "Narratore/Davis". OGNI scena ha UN SOLO speaker.
+
+  ════════════════════════════════════════════════════
+  FASE 2: PULIZIA TESTO E FONETICA (REGOLE UNIVERSALI)
+  ════════════════════════════════════════════════════
+
+  Il campo "clean_text" deve contenere SOLO testo puro, senza tag, senza markup, senza parentesi quadre.
+  Tutti i tag di regia vanno ESCLUSIVAMENTE nel campo "qwen3_instruct".
+
+  1. NUMERI E SIGLE: Riscrivi ogni numero e sigla per esteso in italiano.
+
+  2. MARCATURA ACCENTI TONICI (per guidare il TTS):
+     - PAROLE SDRUCCIOLE: Se l'accento cade sulla terzultima sillaba, aggiungi SEMPRE l'accento grafico
+       sulla vocale tonica. Il TTS fatica con le sdrucciole se non sono marcate.
+     - OMOGRAFI: Usa l'accento grafico per disambiguare parole con grafia identica ma pronuncia e
+       significato diverso a seconda del contesto.
+     - REGOLA D'ORO: Un accento in più non crea mai un errore. Il rischio è sempre nello sbagliarlo
+       o nell'ometterlo. Nel dubbio, marcalo.
+
+  3. RESPELLING NOMI STRANIERI:
+     Riscrivi foneticamente i nomi propri stranieri la cui grafia originale porterebbe il TTS a una
+     lettura errata secondo le regole dell'italiano. Mantieni la sonorità originale del nome.
+
+  4. PUNTEGGIATURA OTTIMIZZATA PER QWEN3-TTS (CRITICO):
+     - I puntini di sospensione (...) sono VIETATI. Causano artefatti sonori (clicking, respiri troncati).
+     - Per una PAUSA DRAMMATICA usa il trattino largo: " - " (spazio, trattino, spazio).
+     - Per SOSPENSIONE o MISTERO usa la virgola ",".
+     - Per ENFASI su una parola chiave: metti la parola tra "virgolette" o in MAIUSCOLO.
+     - Termina sempre le frasi con punto fermo "." per un ritmo narrativo pulito.
+
+  ════════════════════════════════════════════════════
+  FASE 3: DIRETTIVA VOCALE (qwen3_instruct)
+  ════════════════════════════════════════════════════
+
+  Struttura OBBLIGATORIA: [ANCHOR: timbro + ritmo + prosodia] + [VARIAZIONE: emotività della scena]
+
+  - L'ANCHOR descrive il registro fisso e stabile del parlante in questa scena.
+  - La VARIAZIONE descrive il colore emotivo specifico del momento narrativo.
+  - Usa vocabolario fisico in inglese: "chest voice", "resonant", "breathy", "hushed", "vocal fry",
+    "nasal", "warm tone", "unhurried pace", "staccato", "clipped consonants",
+    "natural pitch variation", "strong emphasis on key words", "rising intonation".
+  - Per i dialoghi, calibra l'ANCHOR sullo stile vocale del personaggio fornito nel contesto.
+  - Evita micro-management meccanico (es. "pausa dopo questa parola"). Descrivi lo stato fisico
+    ed emotivo dell'attore, non le sue azioni specifiche.
+
+  ════════════════════════════════════════════════════
+  TESTO DA ELABORARE:
+  {text_content}
+
+  Rispondi ESCLUSIVAMENTE con un JSON ARRAY valido. Nessun altro testo, nessun commento.
+  [
+    {{
+      "scene_label": "breve descrizione della scena",
+      "clean_text": "testo puro con accenti tonici, respelling e punteggiatura corretta (NO tag)",
+      "qwen3_instruct": "Istruzione fisica completa: [ANCHOR: ...] + [VARIAZIONE: ...]",
+      "speaker": "Nome esatto del singolo personaggio o Narratore",
+      "pause_after_ms": 200
+    }}
+  ]

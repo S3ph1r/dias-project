@@ -59,7 +59,7 @@ class StageBSemanticAnalyzer(BaseStage):
             config=cfg,
             redis_client=redis_client
         )
-        self.persistence = DiasPersistence()
+        # self.persistence = DiasPersistence() # Decommissioned global persistence
         self.tracker = ActiveTaskTracker(self.redis, self.logger)
         
         # Check if mock services are enabled
@@ -94,27 +94,32 @@ class StageBSemanticAnalyzer(BaseStage):
         self.logger.info(f"Text length: {len(message.get('text', ''))} characters")
         
         try:
-            self.logger.info(f"Processing block {message.get('block_id')} from book {message.get('book_id')}")
+            # [SANITY CHECK] Force the official sanitized ID as the only truth
+            raw_id = message.get("project_id") or message.get("book_id") or "unknown"
+            project_id = DiasPersistence.normalize_id(raw_id)
+            
+            self.logger.info(f"Using project-aware persistence for: {project_id}")
+            self.persistence = DiasPersistence(project_id=project_id)
+
+            self.logger.info(f"Processing block {message.get('block_id')} from book {project_id}")
             
             # Valida input
             if not message.get('block_id') or not message.get('text'):
                 raise ValueError("block_id e text sono richiesti")
             
-            # Coherence: Use IDs directly from the message (already normalized by Stage A)
-            book_id = message.get('book_id')
+            # Coherence: Use the unified project_id
             block_id = message.get('block_id')
-            clean_title = message.get('clean_title') or self.persistence.normalize_id(book_id)
             block_index = message.get('block_index', 0)
             chunk_label = message.get('chunk_label') or f"chunk-{block_index:03d}"
 
             # Registry task ID for Stage B
             registry_task_id = f"stage_b_{block_id}"
 
-            self.logger.info(f"Processing Stage B: Book {book_id}, Block {block_id}")
+            self.logger.info(f"Processing Stage B: Project {project_id}, Block {block_id}")
 
             # 1. Registry Check (Idempotency)
-            if not self.tracker.is_task_ready_to_send(book_id, registry_task_id):
-                entry = self.tracker.get_entry(book_id, registry_task_id)
+            if not self.tracker.is_task_ready_to_send(project_id, registry_task_id):
+                entry = self.tracker.get_entry(project_id, registry_task_id)
                 if entry and entry.status == "COMPLETED":
                     self.logger.info(f"⏭️ Chunk {block_id} già completato nel registro. Salto.")
                     # If already completed, we should return the original message or the stored result
@@ -128,21 +133,21 @@ class StageBSemanticAnalyzer(BaseStage):
             
             # --- SKIPPING LOGIC (Disk Check) ---
             # Controlla se l'analisi esiste già su disco
-            existing_analysis = self.persistence.load_stage_output("b", clean_title, chunk_label)
+            existing_analysis = self.persistence.load_stage_output("b", project_id, chunk_label)
             if existing_analysis:
-                self.logger.info(f"⏭️ Skipping Gemini: Analisi già presente su disco per {clean_title}-{chunk_label}")
+                self.logger.info(f"⏭️ Skipping Gemini: Analisi già presente su disco per {project_id}-{chunk_label}")
                 
                 # --- NEW: Assicuriamoci che i micro-chunk siano distribuiti ---
                 self.logger.info(f"Checking micro-chunk distribution (from disk cache)...")
                 self._distribute_micro_chunks(existing_analysis, message)
                 
                 # Mark as Completed in Registry if it was skipped due to disk presence
-                self.tracker.mark_as_completed(book_id, registry_task_id, "disk_cache")
+                self.tracker.mark_as_completed(project_id, registry_task_id, "disk_cache")
 
                 return {
                     "status": "success",
                     "block_id": message['block_id'],
-                    "book_id": message['book_id'],
+                    "project_id": project_id,
                     "job_id": existing_analysis.get("job_id", "skipped"),
                     "skipped": True,
                     "file_path": "already_exists",
@@ -151,8 +156,8 @@ class StageBSemanticAnalyzer(BaseStage):
                 }
             # ----------------------
             
-            # Mark as In-Flight in Registry (aria:c:dias:job-...)
-            self.tracker.mark_as_inflight(book_id, registry_task_id, f"aria:c:dias:job-{book_id}-{block_id}")
+            # Mark as In-Flight in Registry
+            self.tracker.mark_as_inflight(project_id, registry_task_id, f"aria:c:dias:job-{project_id}-{block_id}")
 
             # Analizza semanticamente il testo
             self.logger.info("Starting semantic analysis...")
@@ -171,7 +176,7 @@ class StageBSemanticAnalyzer(BaseStage):
             result = {
                 "status": "success",
                 "block_id": message['block_id'],
-                "book_id": message['book_id'],
+                "project_id": project_id,
                 "job_id": semantic_analysis.job_id,
                 "entities_count": len(semantic_analysis.entities),
                 "relations_count": len(semantic_analysis.relations),
@@ -190,10 +195,16 @@ class StageBSemanticAnalyzer(BaseStage):
             # Salva checkpoint Stage B
             # Use pre-extracted coherence fields
             # Salva checkpoint Stage B (Macro Analysis)
-            output_file = self.persistence.save_stage_output(self.STAGE_NAME, analysis_dict, clean_title, chunk_label)
+            output_file = self.persistence.save_stage_output(
+                self.STAGE_NAME, 
+                analysis_dict, 
+                project_id, 
+                chunk_label,
+                include_timestamp=False
+            )
             
             # Mark as Completed in Registry (Macro Task)
-            self.tracker.mark_as_completed(book_id, registry_task_id, str(output_file))
+            self.tracker.mark_as_completed(project_id, registry_task_id, str(output_file))
 
             self.logger.info(f"Macro-Analysis saved to disk: {output_file}")
             
@@ -219,20 +230,15 @@ class StageBSemanticAnalyzer(BaseStage):
             self.logger.error(f"Errore nel processing del block {message.get('block_id', 'unknown')}: {e}")
             self.logger.error(f"Error type: {type(e).__name__}")
             self.logger.error(f"Error details: {str(e)}")
-            return {
-                "status": "error",
-                "block_id": message.get('block_id'),
-                "book_id": message.get('book_id'),
-                "error": str(e),
-                "processing_timestamp": datetime.now().isoformat()
-            }
+            raise e
     
     def _analyze_semantics(self, message: Dict[str, Any]) -> MacroAnalysisResult:
         """
         Analizza semanticamente il testo usando Gemini API
         """
         block_id = message['block_id']
-        book_id = message['book_id']
+        # [DETERMINISTIC] Always use the normalized project_id
+        project_id = self.persistence.project_id
         text = message['text']
         metadata = message.get('metadata', {})
         
@@ -246,7 +252,7 @@ class StageBSemanticAnalyzer(BaseStage):
         import hashlib
         if not message.get('job_id'):
             # Create a stable ID from core metadata to ensure it survives re-queuing
-            stable_id_str = f"{book_id}|{block_id}|stage_b"
+            stable_id_str = f"{project_id}|{block_id}|stage_b"
             job_hash = hashlib.sha256(stable_id_str.encode()).hexdigest()[:12]
             message['job_id'] = f"job-{job_hash}"
             self.logger.info(f"Persisting NEW stable job_id in message: {message['job_id']}")
@@ -254,7 +260,7 @@ class StageBSemanticAnalyzer(BaseStage):
             self.logger.info(f"Reusing EXISTING job_id from message: {message['job_id']}")
         
         job_id = message['job_id']
-
+        
         try:
             # Gestisci client Gateway, reale o mock
             if isinstance(self.gemini_client, GatewayClient):
@@ -287,9 +293,6 @@ class StageBSemanticAnalyzer(BaseStage):
             analysis_result = self._parse_gemini_response(response_text)
             
             # Assembla MacroAnalysisResult
-            # Se analysis_result è già un dict con oggetti Pydantic (da _parse_gemini_response)
-            # Dobbiamo assicurarci di non chiamare Pydantic(**Pydantic)
-            
             def ensure_mapping(item):
                 if hasattr(item, "model_dump"):
                     return item.model_dump()
@@ -297,7 +300,7 @@ class StageBSemanticAnalyzer(BaseStage):
 
             analysis = MacroAnalysisResult(
                 job_id=message.get('job_id', f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"),
-                book_id=book_id,
+                book_id=project_id,
                 block_id=block_id,
                 block_analysis=analysis_result.get('block_analysis') if isinstance(analysis_result.get('block_analysis'), BlockAnalysis) else BlockAnalysis(**ensure_mapping(analysis_result.get('block_analysis', {}))),
                 narrative_markers=[
@@ -321,6 +324,16 @@ class StageBSemanticAnalyzer(BaseStage):
             return analysis
             
         except Exception as e:
+            err_msg = str(e).lower()
+            is_transient = any(code in err_msg for code in ["503", "unavailable", "high demand", "429", "timeout", "network"])
+            
+            if is_transient:
+                # Imposta pausa globale su Redis
+                pause_key = "dias:status:paused"
+                pause_reason = f"Gemini API 503/429 detected in Stage B: {e}. Pausing globally to respect Google pacing."
+                self.redis.set(pause_key, pause_reason)
+                self.logger.critical(f"🛑 GLOBAL PAUSE SET: {pause_reason}")
+            
             self.logger.error(f"Errore nell'analisi semantica per block {block_id}: {e}")
             raise
     
@@ -394,8 +407,7 @@ class StageBSemanticAnalyzer(BaseStage):
                 'relations': relations,
                 'concepts': concepts,
                 'narrative_markers': narrative_markers,
-                'block_analysis': block_analysis,
-                'confidence_score': result.get('confidence_score', 0.0)
+                'block_analysis': block_analysis
             }
             
         except json.JSONDecodeError as e:
@@ -420,12 +432,27 @@ class StageBSemanticAnalyzer(BaseStage):
         creates simplified semantic context for each, and pushes to Stage C.
         """
         try:
-            clean_title = original_message.get("clean_title")
+            # [SANITY CHECK] Use only the official sanitized project_id
+            project_id = self.persistence.project_id
             macro_index = original_message.get("block_index")
-            book_id = original_message.get("book_id")
             
+            # Fallback per macro_index se manca block_index (es: trigger da Orchestratore)
+            if macro_index is None and original_message.get("block_id"):
+                import re
+                match = re.search(r"chunk-(\d{3})", original_message["block_id"])
+                if match:
+                    macro_index = int(match.group(1))
+
+            # Load entities from fingerprint (intelligence DNA)
+            fingerprint_path = self.persistence.get_fingerprint_path()
+            entities = []
+            if fingerprint_path.exists():
+                with open(fingerprint_path, 'r', encoding='utf-8') as f:
+                    fingerprint_data = json.load(f)
+                    entities = fingerprint_data.get("entities", [])
+
             # 1. Scan for micro-chunks in Stage A output
-            stage_a_path = self.persistence.base_path / "stage_a" / "output" / clean_title
+            stage_a_path = self.persistence.project_root / "stages" / "stage_a" / "output"
             if not stage_a_path.exists():
                 self.logger.error(f"Directory micro-chunk non trovata: {stage_a_path}")
                 return
@@ -444,17 +471,20 @@ class StageBSemanticAnalyzer(BaseStage):
             # We only keep the essential "Character Bible" and the "Mood"
             simplified_context = {
                 "entities": macro_analysis.get("entities", []),
+                "relations": macro_analysis.get("relations", []),
+                "narrative_markers": macro_analysis.get("narrative_markers", []),
                 "block_analysis": {
                     "primary_emotion": macro_analysis.get("block_analysis", {}).get("primary_emotion", "neutro"),
                     "secondary_emotion": macro_analysis.get("block_analysis", {}).get("secondary_emotion"),
-                    "setting": macro_analysis.get("block_analysis", {}).get("setting")
+                    "setting": macro_analysis.get("block_analysis", {}).get("setting"),
+                    "valence": macro_analysis.get("block_analysis", {}).get("valence", 0.5),
+                    "arousal": macro_analysis.get("block_analysis", {}).get("arousal", 0.5),
+                    "tension": macro_analysis.get("block_analysis", {}).get("tension", 0.5)
                 },
                 "macro_job_id": macro_analysis.get("job_id", "unknown"),
                 # Carry over metadata
-                "book_id": book_id,
-                "clean_title": clean_title,
-                "macro_index": macro_index,
-                "book_metadata": original_message.get("book_metadata")
+                "project_id": project_id,
+                "macro_index": macro_index
             }
 
             # 3. Save and Enqueue each micro-chunk
@@ -465,25 +495,27 @@ class StageBSemanticAnalyzer(BaseStage):
                 micro_label = "-".join(parts[-4:]) # chunk-XXX-micro-YYY
                 
                 # Salva il contesto semplificato per questo specifico micro-chunk
+                # Inject micro-specific block_id into the context
+                current_context = simplified_context.copy()
+                current_context["block_id"] = f"{project_id}-{micro_label}"
+                
                 self.persistence.save_stage_output(
                     stage="b",
-                    data=simplified_context,
-                    book_id=clean_title,
-                    block_id=f"{micro_label}-semantic"
+                    data=current_context,
+                    book_id=project_id,
+                    block_id=f"{micro_label}-semantic",
+                    include_timestamp=False
                 )
                 
                 # Push task to Stage C queue (dias:q:3:regia)
                 task_message = {
-                    "book_id": book_id,
-                    "clean_title": clean_title,
+                    "project_id": project_id,
                     "chunk_label": micro_label,
                     "macro_index": macro_index,
                     "micro_index": int(micro_label.split("-")[-1]),
                     "job_id": f"job-{micro_label}",
                     "stage": "semantic_micro",
-                    "timestamp": datetime.now().isoformat(),
-                    # I metadati del libro servono allo Stage C per caricare il testo
-                    "book_metadata": original_message.get("book_metadata")
+                    "timestamp": datetime.now().isoformat()
                 }
                 
                 self.redis.push_to_queue(self.output_queue, task_message)

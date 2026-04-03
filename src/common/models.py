@@ -256,8 +256,6 @@ class SceneScript(BaseModel):
     scene_id: str
     scene_number: int = Field(ge=0)
     text_content: str = Field(min_length=1)
-    fish_annotated_text: Optional[str] = None
-    orpheus_annotated_text: Optional[str] = None
     tts_backend: TTSBackend = TTSBackend.FISH_S1_MINI
     start_char_index: int = Field(ge=0, default=0)
     end_char_index: int = Field(ge=0, default=0)

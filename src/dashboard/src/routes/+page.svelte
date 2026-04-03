@@ -1,13 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fetchProjects, fetchAriaNodes, type Project, type AriaNode } from '$lib/api';
+  import UploadModal from '$lib/components/UploadModal.svelte';
+  import { goto } from '$app/navigation';
 
   let projects = $state<Project[]>([]);
   let ariaNodes = $state<AriaNode[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
+  let showUploadModal = $state(false);
 
-  onMount(async () => {
+  const loadData = async () => {
     try {
       const [pData, aData] = await Promise.all([
         fetchProjects(),
@@ -20,7 +23,15 @@
     } finally {
       loading = false;
     }
-  });
+  };
+
+  onMount(loadData);
+
+  const handleUploadSuccess = (projectId: string) => {
+    // Redirect to the new project or reload list
+    loadData();
+    // Potentially goto(`/projects/${projectId}`);
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -40,14 +51,26 @@
       <p class="text-slate-400 text-lg">Monitor and manage the immersive audiobook pipeline.</p>
     </div>
     <div class="flex gap-4">
-      <button class="px-6 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-bold transition-all shadow-lg shadow-sky-500/25 active:scale-95">
+      <button 
+        onclick={() => showUploadModal = true}
+        class="px-6 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-bold transition-all shadow-lg shadow-sky-500/25 active:scale-95"
+      >
         New Project
       </button>
-      <button class="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold transition-all active:scale-95 border border-slate-700">
+      <button 
+        onclick={loadData}
+        class="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold transition-all active:scale-95 border border-slate-700"
+      >
         Refresh
       </button>
     </div>
   </header>
+
+  <UploadModal 
+    show={showUploadModal} 
+    onClose={() => showUploadModal = false}
+    onSuccess={handleUploadSuccess}
+  />
 
   <!-- Status Grid -->
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

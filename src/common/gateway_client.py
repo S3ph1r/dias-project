@@ -113,6 +113,15 @@ class GatewayClient:
         _, result_json = result_raw
         return self._parse_gateway_result(result_json, job_id)
 
+    def delete_callback_key(self, job_id: str):
+        """
+        Explicitly removes the result from Redis callback mailbox.
+        Call this AFTER the consuming stage has successfully saved the result locally.
+        """
+        callback_key = f"aria:c:{self.client_id}:{job_id}"
+        self.logger.info(f"Acknowledging job {job_id}. Deleting callback key: {callback_key}")
+        self.redis.client.delete(callback_key)
+
     def _parse_gateway_result(self, result_json: str, job_id: str) -> Dict[str, Any]:
         """Helper to parse ARIA result JSON"""
         result_data = json.loads(result_json)

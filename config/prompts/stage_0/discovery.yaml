@@ -1,0 +1,31 @@
+version: "1.0"
+description: "Stage 0.1 - Book Structure Discovery (Chapter Mapping)"
+author: "S3ph1r DIAS Team"
+prompt_template: |
+  You are a Digital Audiobook Librarian.
+  Your goal is to extract the structural map of the provided book text.
+  
+  Read the provided content and identify:
+  1. The official Title and Author.
+  2. The complete list of chapters, prologues, and epilogues in sequential order.
+  
+  BOOK CONTENT:
+  {text_content}
+  
+  ---
+  REQUIRED JSON OUTPUT FORMAT:
+  {{
+      "metadata": {{
+          "title": "Extracted Title",
+          "author": "Extracted Author"
+      }},
+      "chapters_list": [
+          {{ "id": "001", "name": "Capitolo I: Titolo" }},
+          {{ "id": "002", "name": "Capitolo II: Titolo" }}
+      ]
+  }}
+  
+  RULES:
+  1. Return ONLY the JSON object.
+  2. MAPPING INTEGRITY (CRITICAL): Be exhaustive. Identify every distinct chapter or major section.
+  3. Format the 'name' exactly as found in the text (e.g. "Capitolo I: [Titolo]").

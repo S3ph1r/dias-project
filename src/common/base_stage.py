@@ -143,26 +143,19 @@ class BaseStage(ABC):
         self.logger.error(
             f"Error processing message: {error}",
             exc_info=True,
-            extra={"book_id": message.get("book_id", "unknown")},
+            extra={"book_id": message.get("project_id") or message.get("book_id") or "unknown"},
         )
         return True  # Default: continua
 
     # --- Run loop ---
 
-    def run(self, consume_timeout: int = 5) -> None:
+    def run(self, consume_timeout: int = 5, once: bool = False) -> None:
         """
         Loop principale dello stadio.
-
-        1. Health check Redis
-        2. Consume da input_queue (BRPOP)
-        3. Chiama process(message)
-        4. Se result: push su output_queue
-        5. Checkpoint
-        6. Ripeti fino a shutdown
-
+        
         Args:
-            consume_timeout: Secondi di attesa su BRPOP prima di riprovare.
-                            Più basso = più reattivo allo shutdown.
+            consume_timeout: Secondi di attesa su BRPOP.
+            once: Se True, esce dopo aver processato un solo messaggio (modalità Job).
         """
         self.logger.info(f"Starting {self.stage_name} (stage {self.stage_number})")
 
@@ -189,7 +182,7 @@ class BaseStage(ABC):
                 if message is None:
                     continue  # Timeout, ricontrolla _running
 
-                book_id = message.get("book_id", "unknown")
+                book_id = message.get("project_id") or message.get("book_id") or "unknown"
                 self.logger.info(
                     f"Processing message for book={book_id}",
                     extra={"book_id": book_id},
@@ -214,6 +207,12 @@ class BaseStage(ABC):
                     else:
                         self.logger.info(f"Process returned None for book={book_id} (No output/Skipped)")
 
+                    # MODALITÀ JOB (v2.1): Esci dopo il primo task (successo o skip)
+                    if once:
+                        self.logger.info("Modalità UNICA (once) attiva. Shutdown in corso dopo il primo messaggio.")
+                        self._running = False
+                        break
+
                 except Exception as e:
                     # IMPLEMENTAZIONE CATENA SEQUENZIALE RIGOROSA (v2.0)
                     error_msg = str(e)
@@ -235,6 +234,9 @@ class BaseStage(ABC):
                         break
                     
                     # Forza l'uscita del processo per essere certi che l'orchestratore lo rilevi
+                    self.logger.critical(f"Aborting {self.stage_name} due to critical error.")
+                    import time
+                    time.sleep(1) # Piccolo delay per permettere il flush del log
                     sys.exit(1)
 
         finally:

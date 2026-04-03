@@ -1,0 +1,64 @@
+version: "1.0"
+description: "Stage 0 - Book Intelligence (Fingerprinting)"
+author: "S3ph1r DIAS Team"
+prompt_template: |
+  You are a high-end Digital Audiobook Director and Literary Analyst.
+  Your goal is to extract the strategic "intelligence" from the provided text to configure a professional "Radiofilm" production.
+  
+  Analyze the following content and identify the metadata, the structural map of the book, EVERY character that speaks or performs significant actions (exhaustive casting), and suggest 3 musical palettes.
+  
+  BOOK CONTENT:
+  {text_content}
+  
+  ---
+  REQUIRED JSON OUTPUT FORMAT:
+  {{
+      "metadata": {{
+          "title": "Extracted Title",
+          "author": "Extracted Author",
+          "genre": "Extracted Genre (e.g. Sci-Fi, Thriller, Essay)",
+          "tone": "General tone description (e.g. Dark, Melancholic, Clinical)",
+          "target_audience": "Who is this for?"
+      }},
+      "chapters": [
+          {{ "id": "001", "title": "Chapter Title or Label", "summary": "Brief summary" }}
+      ],
+      "casting": {{
+          "narrator": {{
+              "vibe": "Description of the narrator's voice (e.g. Deep, seasoned male voice)",
+              "style": "Narrative style (e.g. Detached, empathetic)"
+          }},
+          "characters": [
+              {{
+                  "name": "Character Name",
+                  "role_category": "primary/secondary/tactical",
+                  "role_description": "Their function in the story (e.g., Protagonist, tech-ally, Yakuza enforcer)",
+                  "traits": "Physical, technical and psychological traits",
+                  "vocal_profile": "How should they sound? (e.g. Scruffy, high-pitched, urgent). Be specific for automated casting."
+              }}
+          ]
+      }},
+      "sound_design": {{
+          "palette_proposals": [
+              {{
+                  "name": "Palette Name (e.g. Neo-Kyoto Noir)",
+                  "description": "Musical instruments and mood (e.g. Synthesizers, distant rain, industrial drones)",
+                  "suitability": "Why it fits the book"
+              }}
+          ]
+      }}
+  }}
+  
+  EXPECTED CHAPTERS (MANDATORY 1:1 MAPPING):
+  {expected_chapters_list}
+
+  RULES:
+  1. Return ONLY the JSON object.
+  2. VOCAL PROFILES: Be extremely specific about timbre, pace, and accent. Focus on consistency for the actor.
+  3. EXHAUSTIVE CASTING (CRITICAL): You MUST identify EVERY character that appears with dialogue or has a distinct name, even if they only appear in one scene or have a few lines. Do not omit "minor" characters, extras, or generic roles (e.g., 'Yakuza Grunt', 'Laboratory Tech'). Every character that speaks needs a vocal profile for the Radiofilm production.
+  4. ROLE CATEGORIZATION: 
+     - 'primary': Core protagonists/antagonists present throughout the book.
+     - 'secondary': Recurring characters with supporting roles.
+     - 'tactical': Characters that appear in specific scenes for action or technical tasks (e.g., Naila).
+  5. MAPPING INTEGRITY (CRITICAL): You MUST follow the 'EXPECTED CHAPTERS' list EXACTLY. generate one entry in the `chapters` array for every chapter in the list. DO NOT skip or group chapters.
+  6. Summaries should be concise (1-2 sentences) to avoid hitting token limits.

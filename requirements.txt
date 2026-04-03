@@ -1,48 +1,151 @@
-# DIAS Core Dependencies
-# Requirements unificati per l'intero sistema DIAS (Stage A, B, C, D)
-
-# --- Configuration & Validation ---
-pyyaml==6.0.2         # YAML parsing per config
-pydantic==2.10.3      # Data validation
-python-dotenv==1.0.1  # Environment variables loading
-
-# --- Redis ---
-redis==5.2.0          # Redis client
-fakeredis==2.26.1     # Testing Redis mock
-
-# --- Stage A: Text Ingester ---
-PyMuPDF==1.24.9       # Primary PDF parsing
-pdfplumber==0.11.0    # Fallback PDF parsing
-beautifulsoup4==4.12.3 # HTML/XML parsing per EPUB
-lxml==5.3.0           # Parser elastico per BS4
-ebooklib==0.18        # Parsing libreria EPUB
-python-docx==1.1.2    # Parsing documenti Word DOCX
-nltk==3.9.1           # Natural Language Processing
-spacy==3.8.2          # NLP avanzato
-tqdm==4.67.1          # Progress bars
-python-magic==0.4.27  # File type detection
-chardet==5.2.0        # Character encoding detection
-
-# --- Stage B & C: Semantic Analysis & Scene Director ---
-google-genai>=0.3.0   # SDK ufficiale Google Gemini API per il text prompting
-google-generativeai>=0.3.0 # Legacy compatibilità per alcuni script
-jsonschema==4.23.0    # JSON schema validation
-
-# --- Utilities & Logging ---
-python-json-logger==3.2.1 # JSON logging
-pathlib2==2.3.7       # Path utilities
-python-dateutil==2.9.0 # Date/time utilities
-
-# --- API Hub ---
-fastapi==0.111.0
-uvicorn==0.30.1
-
-# --- Development & Testing ---
-pytest==8.3.4
-pytest-cov==6.0.0
-pytest-asyncio==0.25.0
-pytest-mock==3.14.0
+annotated-doc==0.0.4
+annotated-types==0.7.0
+anyio==4.12.1
+attrs==25.4.0
+audioread==3.1.0
+beautifulsoup4==4.12.3
 black==24.10.0
+blis==1.3.3
+catalogue==2.0.10
+certifi==2026.2.25
+cffi==2.0.0
+chardet==5.2.0
+charset-normalizer==3.4.4
+click==8.3.1
+cloudpathlib==0.23.0
+confection==0.1.5
+contourpy==1.3.3
+coverage==7.13.4
+cryptography==46.0.5
+cycler==0.12.1
+cymem==2.0.13
+decorator==5.2.1
+distro==1.9.0
+dnspython==2.8.0
+EbookLib==0.18
+email-validator==2.3.0
+fakeredis==2.26.1
+fastapi==0.111.0
+fastapi-cli==0.0.24
 flake8==7.1.1
+fonttools==4.62.1
+google-ai-generativelanguage==0.6.15
+google-api-core==2.30.0
+google-api-python-client==2.192.0
+google-auth==2.48.0
+google-auth-httplib2==0.3.0
+google-genai==1.65.0
+google-generativeai==0.8.6
+googleapis-common-protos==1.73.0
+grpcio==1.78.0
+grpcio-status==1.71.2
+h11==0.16.0
+httpcore==1.0.9
+httplib2==0.31.2
+httptools==0.7.1
+httpx==0.28.1
+idna==3.11
+iniconfig==2.3.0
+Jinja2==3.1.6
+joblib==1.5.3
+jsonschema==4.23.0
+jsonschema-specifications==2025.9.1
+kiwisolver==1.5.0
+langcodes==3.5.1
+lazy-loader==0.5
+librosa==0.11.0
+llvmlite==0.46.0
+lxml==5.3.0
+markdown-it-py==4.0.0
+MarkupSafe==3.0.3
+matplotlib==3.10.8
+mccabe==0.7.0
+mdurl==0.1.2
+msgpack==1.1.2
+murmurhash==1.0.15
 mypy==1.14.1
-reportlab==4.2.0      # PDF generation for test fixtures
+mypy_extensions==1.1.0
+nltk==3.9.1
+numba==0.64.0
+numpy==2.4.2
+orjson==3.11.7
+packaging==26.0
+pathlib2==2.3.7
+pathspec==1.0.4
+pdfminer.six==20231228
+pdfplumber==0.11.0
+pillow==12.1.1
+platformdirs==4.9.4
+pluggy==1.6.0
+pooch==1.9.0
+preshed==3.0.12
+proto-plus==1.27.1
+protobuf==5.29.6
+pyasn1==0.6.2
+pyasn1_modules==0.4.2
+pycodestyle==2.12.1
+pycparser==3.0
+pydantic==2.10.3
+pydantic-settings==2.13.1
+pydantic_core==2.27.1
+pydub==0.25.1
+pyflakes==3.2.0
+Pygments==2.19.2
+PyMuPDF==1.24.9
+PyMuPDFb==1.24.9
+pyparsing==3.3.2
+pypdfium2==5.5.0
+pytest==8.3.4
+pytest-asyncio==0.25.0
+pytest-cov==6.0.0
+pytest-mock==3.14.0
+python-dateutil==2.9.0
+python-docx==1.1.2
+python-dotenv==1.0.1
+python-json-logger==3.2.1
+python-magic==0.4.27
+python-multipart==0.0.22
+PyYAML==6.0.2
+redis==5.2.0
+referencing==0.37.0
+regex==2026.2.28
+reportlab==4.2.0
+requests==2.32.5
+rich==14.3.3
+rich-toolkit==0.19.7
+rpds-py==0.30.0
+rsa==4.9.1
+scikit-learn==1.8.0
+scipy==1.17.1
+setuptools==82.0.0
+shellingham==1.5.4
+six==1.17.0
+smart_open==7.5.1
+sniffio==1.3.1
+sortedcontainers==2.4.0
+soundfile==0.13.1
+soupsieve==2.8.3
+soxr==1.0.0
+spacy==3.8.2
+spacy-legacy==3.0.12
+spacy-loggers==1.0.5
+srsly==2.5.2
+starlette==0.37.2
+tenacity==9.1.4
+thinc==8.3.10
+threadpoolctl==3.6.0
+tqdm==4.67.1
+typer==0.24.1
+typer-slim==0.24.0
+typing-inspection==0.4.2
+typing_extensions==4.15.0
+ujson==5.12.0
+uritemplate==4.2.0
+urllib3==2.6.3
+uvicorn==0.30.1
+uvloop==0.22.1
+wasabi==1.1.3
+watchfiles==1.1.1
+weasel==0.4.3
+websockets==16.0
+wrapt==2.1.1

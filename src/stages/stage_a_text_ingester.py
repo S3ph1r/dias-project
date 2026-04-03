@@ -11,7 +11,7 @@ import re
 import json
 import logging
 from pathlib import Path
-from typing import List, Dict, Optional, Union, Tuple
+from typing import List, Dict, Optional, Union, Tuple, Any
 from dataclasses import dataclass
 from enum import Enum
 from uuid import uuid4
@@ -64,6 +64,7 @@ class FileFormat(Enum):
     PDF = "pdf"
     EPUB = "epub" 
     DOCX = "docx"
+    TXT = "txt"
     UNKNOWN = "unknown"
 
 
@@ -130,10 +131,11 @@ class TextIngester(BaseStage):
             config=config,
             redis_client=redis_client
         )
-        self.output_queue = self.cfg.queues.ingestion
+        self.output_queue = self.config.queues.ingestion
         
         # Initialize persistence manager
-        self.persistence = DiasPersistence()
+        # self.persistence = DiasPersistence() # Decommissioned global persistence
+        self.persistence = DiasPersistence() # Kept for utility (normalize_id) but will be overridden in process
         
         # Temporary storage for testing
         self._temp_blocks = []
@@ -167,7 +169,8 @@ class TextIngester(BaseStage):
         format_map = {
             '.pdf': FileFormat.PDF,
             '.epub': FileFormat.EPUB,
-            '.docx': FileFormat.DOCX
+            '.docx': FileFormat.DOCX,
+            '.txt': FileFormat.TXT
         }
         
         detected_format = format_map.get(ext, FileFormat.UNKNOWN)
@@ -421,6 +424,9 @@ class TextIngester(BaseStage):
             return self.extract_text_from_epub(file_path)
         elif format_type == FileFormat.DOCX:
             return self.extract_text_from_docx(file_path)
+        elif format_type == FileFormat.TXT:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
         else:
             raise ValueError(f"Unsupported file format: {file_path.suffix}")
     
@@ -683,31 +689,48 @@ class TextIngester(BaseStage):
             Processing result or None if failed
         """
         try:
-            book_id = message.get("book_id")
-            title = message.get("title", "Unknown")
+            # [SANITY CHECK] Force the official sanitized ID as the only truth
+            raw_id = message.get("project_id") or message.get("book_id") or "unknown"
+            project_id = DiasPersistence.normalize_id(raw_id)
             
-            # Coherence: The project ID MUST be the normalized title
-            clean_title = self.persistence.normalize_id(title)
-            book_id = clean_title 
+            # [BACKWARD COMPATIBILITY] Ensure legacy names are available for internal logic
+            book_id = project_id
+            clean_title = project_id
             
+            title = message.get("title", project_id)
             file_path = message.get("file_path")
-            original_filename = message.get("original_filename", "unknown")
+
+            if not project_id or project_id == "unknown":
+                self.logger.error("No valid project_id provided in message")
+                return None
+
+            # Re-initialize persistence for this specific project
+            from src.common.persistence import DiasPersistence
+            self.persistence = DiasPersistence(project_id=project_id)
+
+            self.logger.info(f"=== Stage A Processing for project: {project_id} ===")
             
+            # --- DETERMINISTIC SOURCE DETECTION ---
+            # Use the provided file_path (which is the source or normalized text pointer)
             if not file_path:
-                self.logger.error("Missing required fields: file_path")
+                self.logger.error("No file_path provided in message")
+                return None
+                
+            if os.path.isabs(file_path):
+                source_path = Path(file_path)
+            else:
+                # Resolve relative to project root
+                source_path = Path(self.persistence.project_root) / file_path
+
+            if not source_path.exists():
+                self.logger.error(f"❌ Source file not found: {source_path}")
                 return None
             
-            self.logger.info(f"Processing book {book_id}: {original_filename}")
-            
-            # Validate file exists
-            file_path = Path(file_path)
-            if not file_path.exists():
-                self.logger.error(f"File not found: {file_path}")
-                return None
-            
+            self.logger.info(f"📖 Stage A loading text from: {source_path}")
+
             # Extract text based on file format
             try:
-                full_text = self.extract_text(file_path)
+                full_text = self.extract_text(source_path)
             except Exception as e:
                 self.logger.error(f"Text extraction failed for {book_id}: {e}")
                 return None
@@ -728,20 +751,20 @@ class TextIngester(BaseStage):
             )
             
             # Intelligently chunk the text
-            chunks = self.intelligent_chunk_text(full_text, book_id)
+            chunks = self.intelligent_chunk_text(full_text, project_id)
             
             if not chunks:
-                self.logger.error(f"Text chunking failed for {book_id}")
+                self.logger.error(f"Text chunking failed for {project_id}")
                 return None
             
-            self.logger.info(f"Created {len(chunks)} chunks for book {book_id}")
+            self.logger.info(f"Created {len(chunks)} chunks for book {project_id}")
             
             # Convert chunks to ingestion blocks
             ingestion_blocks = []
             for i, chunk in enumerate(chunks):
                 block = IngestionBlock(
-                    book_id=book_id,
-                    chapter_id=f"{book_id}-chap-1",  # Default chapter ID
+                    book_id=project_id,
+                    chapter_id=f"{project_id}-chap-1",  # Default chapter ID
                     chapter_number=1,  # Default chapter number
                     block_id=str(uuid4()),  # Generate unique block ID
                     block_text=chunk.text,
@@ -754,8 +777,7 @@ class TextIngester(BaseStage):
             # Push chunks to output queue
             success_count = 0
             self._temp_blocks = list(ingestion_blocks)  # Save for testing
-            saved_file_paths = {}  # Traccia percorsi salvati
-            clean_title = "".join([c if c.isalnum() else "-" for c in book_metadata.title]).strip("-")
+            # [FIX] Remosso clean_title manuale incoerente. Usiamo solo project_id.
             
             for block in ingestion_blocks:
                 try:
@@ -779,8 +801,9 @@ class TextIngester(BaseStage):
                     filepath = self.persistence.save_stage_output(
                         stage="a",
                         data=block_data,
-                        book_id=clean_title,
-                        block_id=chunk_label
+                        book_id=project_id,
+                        block_id=chunk_label,
+                        include_timestamp=False
                     )
                     saved_file_paths[block.block_id] = filepath
                     
@@ -801,8 +824,9 @@ class TextIngester(BaseStage):
                         self.persistence.save_stage_output(
                             stage="a",
                             data=micro_data,
-                            book_id=clean_title,
-                            block_id=micro["label"]
+                            book_id=block.book_id,
+                            block_id=micro["label"],
+                            include_timestamp=False
                         )
                     self.logger.info(f"📦 Generati {len(micro_chunks)} micro-chunk per {chunk_label}")
                     # ----------------------------------------------------
@@ -845,18 +869,18 @@ class TextIngester(BaseStage):
             self.logger.info(f"Successfully pushed {success_count}/{len(ingestion_blocks)} chunks for book {book_id}")
             
             # Return processing summary
-            result = {
-                "book_id": book_id,
-                "status": "success",
-                "chunks_created": len(ingestion_blocks),
-                "chunks_pushed": success_count,
-                "book_metadata": book_metadata.model_dump(),
-                "processing_time": "TODO: add timing",
-                "stage": "text_ingestion",
-                "timestamp": message_data["timestamp"]
-            }
+            # Salva checkpoint manualmente prima di uscire (BaseStage lo farebbe solo se restituissimo result)
+            self.redis.set_checkpoint(book_id, self.stage_number)
             
-            return result
+            # Nuova logica Sprint 4: Aggiorna lo stato del progetto nel config.json
+            try:
+                self.persistence.update_project_config({"status": "ingested"})
+                self.logger.info(f"📈 Project status updated to 'ingested' for {book_id}")
+            except Exception as e:
+                self.logger.warning(f"Failed to update project config for {book_id}: {e}")
+            
+            # Restituiamo None per evitare che BaseStage invii il messaggio di riepilogo alla coda dello Stage B
+            return None
             
         except Exception as e:
             self.logger.error(f"Unexpected error processing message: {e}")

@@ -88,9 +88,10 @@ class TextDirector:
         Rispondi ESCLUSIVAMENTE con JSON: {{"annotated_text": "..."}}
     """
 
-    def __init__(self, gemini_client, config, logger: logging.Logger):
+    def __init__(self, gemini_client, config, redis_client, logger: logging.Logger):
         self.gemini_client = gemini_client
         self.config = config
+        self.redis = redis_client
         self.logger = logger
 
     def annotate_text_for_qwen3(
@@ -98,7 +99,7 @@ class TextDirector:
         text_content: str,
         emotion: str,
         emotion_description: str,
-        book_id: str,
+        project_id: str,
         block_id: str,
         job_id: Optional[str] = None,
         macro_analysis: Optional[Dict] = None,
@@ -125,7 +126,7 @@ class TextDirector:
         import yaml
         
         # Caricamento del nuovo prompt esternalizzato
-        prompt_path = getattr(self.config, "stage_c_prompt_path", "config/prompts/stage_c/v1.0_base.yaml")
+        prompt_path = getattr(self.config, "stage_c_prompt_path", "config/prompts/stage_c/v1.4_contextual.yaml")
         prompt_full_path = Path(__file__).parent.parent.parent / prompt_path
         
         try:
@@ -182,6 +183,19 @@ class TextDirector:
         else:
             entities_speaking_styles = "  - No named entities in this block."
 
+        # character_relationships: formattato per Gemini
+        relations = (macro_analysis or {}).get("relations", [])
+        if relations:
+            rel_lines = []
+            for rel in relations:
+                src_id = rel.get("source_entity_id", "?")
+                tgt_id = rel.get("target_entity_id", "?")
+                rel_type = rel.get("relation_type", "knows")
+                rel_lines.append(f"  - {src_id} --({rel_type})--> {tgt_id}")
+            character_relationships = "\n".join(rel_lines)
+        else:
+            character_relationships = "  - No specific relationships documented for this block."
+
         # ── Sostituzione placeholder nel template ────────────────────────────
         prompt = (
             template
@@ -191,6 +205,7 @@ class TextDirector:
             .replace("{narrator_base_tone}", narrator_base_tone)
             .replace("{narrative_arc}", narrative_arc)
             .replace("{entities_speaking_styles}", entities_speaking_styles)
+            .replace("{character_relationships}", character_relationships)
             .replace("{text_content}", text_content)
         )
 
@@ -215,11 +230,11 @@ class TextDirector:
                 
                 # Deterministic Job Meta
                 job_meta = {
-                    "book_id": book_id,
+                    "project_id": project_id,
                     "block_id": block_id,
                     "stage": "stage_c"
                 }
-                
+
                 response = self.gemini_client.generate_content(
                     contents=contents,
                     model_id=model_name,
@@ -237,27 +252,42 @@ class TextDirector:
                 # Mock client (MockGeminiClient)
                 response_text = self.gemini_client.generate_content(prompt, model=model_name)
 
-            response_text = response_text.strip()
+            # Robust JSON parsing (v2.1)
+            # Cerchiamo l'inizio del JSON (array o oggetto)
+            start_index = response_text.find('[')
+            if start_index == -1:
+                start_index = response_text.find('{')
             
-            # Robust JSON parsing (Fallbacks per risposte parzialmente sporche)
-            import re
-            if "```json" in response_text:
-                match = re.search(r"```json\s*(.*?)\s*```", response_text, re.DOTALL)
-                if match:
-                    response_text = match.group(1)
-            elif "[" in response_text and "]" in response_text:
-                match = re.search(r"(\[.*\])", response_text, re.DOTALL)
-                if match:
-                    response_text = match.group(1)
-
-            try:
-                scenes_list = json.loads(response_text)
-            except json.JSONDecodeError as jde:
-                dump_path = "/home/Projects/NH-Mini/sviluppi/dias/logs/json_error_dump.txt"
-                with open(dump_path, "w", encoding="utf-8") as f:
-                    f.write(response_text)
-                self.logger.error(f"JSONDecodeError: Saved raw response to {dump_path}")
-                raise jde
+            if start_index != -1:
+                try:
+                    import json
+                    decoder = json.JSONDecoder()
+                    scenes_list, index = decoder.raw_decode(response_text[start_index:])
+                    self.logger.info(f"JSON parsed successfully using raw_decode (Pointer at {index})")
+                except json.JSONDecodeError as jde:
+                    # Fallback al regex se raw_decode fallisce per qualche motivo
+                    self.logger.warning(f"raw_decode failed: {jde}. Trying regex fallback...")
+                    import re
+                    if "```json" in response_text:
+                        match = re.search(r"```json\s*(.*?)\s*```", response_text, re.DOTALL)
+                        if match:
+                            response_text = match.group(1)
+                    elif "[" in response_text and "]" in response_text:
+                        match = re.search(r"(\[.*\])", response_text, re.DOTALL)
+                        if match:
+                            response_text = match.group(1)
+                    
+                    try:
+                        scenes_list = json.loads(response_text)
+                    except json.JSONDecodeError as jde2:
+                        dump_path = "/home/Projects/NH-Mini/sviluppi/dias/logs/json_error_dump.txt"
+                        with open(dump_path, "w", encoding="utf-8") as f:
+                            f.write(response_text)
+                        self.logger.error(f"JSONDecodeError persistente: Salvata risposta raw in {dump_path}")
+                        raise jde2
+            else:
+                self.logger.error("Nessun blocco JSON trovato nella risposta")
+                raise ValueError("NO_JSON_FOUND")
 
             if not isinstance(scenes_list, list):
                 scenes_list = [scenes_list]
@@ -279,119 +309,33 @@ class TextDirector:
                     # Fallback se non ha seguito il formato
                     scene["qwen3_instruct"] = fallback_instruct
                     
-                    # Nuovi campi micro-scene (con default safe)
-                    if "speaker" not in scene:
-                        scene["speaker"] = None
-                    if "pause_after_ms" not in scene:
-                        scene["pause_after_ms"] = 200  # default pausa breve
-                    
-                    # Retrocompatibilità: genera has_dialogue dal campo speaker
-                    scene["has_dialogue"] = scene.get("speaker") is not None
-                    # dialogue_notes ora è integrato nell'instruct stesso
-                    if "dialogue_notes" not in scene:
-                        scene["dialogue_notes"] = None
+                # Nuovi campi micro-scene (con default safe)
+                if "speaker" not in scene:
+                    scene["speaker"] = None
+                if "pause_after_ms" not in scene:
+                    scene["pause_after_ms"] = 200  # default pausa breve
+                
+                # Retrocompatibilità: genera has_dialogue dal campo speaker
+                scene["has_dialogue"] = scene.get("speaker") is not None
 
-
-                self.logger.info(f"TextDirector Qwen3 OK | Generate {len(scenes_list)} scene dinamiche strutturate")
-                return scenes_list
+            self.logger.info(f"TextDirector Qwen3 OK | Generate {len(scenes_list)} scene dinamiche strutturate")
+            return scenes_list
 
         except Exception as e:
+            err_msg = str(e).lower()
+            is_transient = any(code in err_msg for code in ["503", "unavailable", "high demand", "429", "timeout", "network"])
+            
+            if is_transient:
+                # Imposta pausa globale su Redis
+                pause_key = "dias:status:paused"
+                pause_reason = f"Gemini API 503/429 detected in Stage C: {e}. Pausing globally to respect Google pacing."
+                self.redis.set(pause_key, pause_reason)
+                self.logger.critical(f"🛑 GLOBAL PAUSE SET: {pause_reason}")
+                
             self.logger.error(f"Errore TextDirector Qwen3: {e}")
-            # Rilancia per permettere a BaseStage di gestire il re-enqueue
             raise
 
 
-    def annotate_text_for_fish(self, text_content: str, emotion_description: str) -> str:
-        """
-        [LEGACY — Fish S1-mini]
-        Chiama Gemini API per inserire marcatori Fish nel testo.
-        NON usato nel flusso principale (backend: qwen3-tts-1.7b).
-        Conservato per riutilizzo futuro.
-        """
-        prompt = self.FISH_ANNOTATION_PROMPT.format(
-            emotion_description=emotion_description,
-            text_content=text_content
-        )
-
-        max_retries = 5
-        base_delay = 2
-        annotated_text = text_content
-        
-        for attempt in range(max_retries):
-            try:
-                self.logger.info(f"Chiamata TextDirector per annotazione Fish S1-mini (LEGACY) - Tentativo {attempt + 1}")
-                
-                # Use gemini-flash-lite-latest as configured
-                model_name = self.config.google.model_flash_lite
-                
-                if isinstance(self.gemini_client, GatewayClient):
-                    # Client ARIA Gateway
-                    contents = [{"role": "user", "parts": [{"text": prompt}]}]
-                    response = self.gemini_client.generate_content(
-                        contents=contents,
-                        model_id=model_name
-                    )
-                    if response["status"] == "error":
-                        raise RuntimeError(f"GATEWAY_ERROR: {response.get('error')}")
-                    response_text = response["output"].get("text", "")
-                
-                elif hasattr(self.gemini_client, 'models'):
-                    # Client reale Google Gemini
-                    response = self.gemini_client.models.generate_content(
-                        model=model_name,
-                        contents=prompt
-                    )
-                    response_text = response.text
-                else:
-                    # Mock client
-                    response_text = self.gemini_client.generate_content(prompt, model=model_name)
-                
-                # Robust JSON parsing
-                response_text = response_text.strip()
-                
-                # Extract JSON block if present
-                if "```json" in response_text:
-                    import re
-                    match = re.search(r"```json\s*(.*?)\s*```", response_text, re.DOTALL)
-                    if match:
-                        response_text = match.group(1)
-                elif "{" in response_text and "}" in response_text:
-                    import re
-                    match = re.search(r"({.*})", response_text, re.DOTALL)
-                    if match:
-                        response_text = match.group(1)
-                
-                try:
-                    annotation_data = json.loads(response_text)
-                    annotated_text = annotation_data.get("annotated_text", text_content)
-                except json.JSONDecodeError:
-                    self.logger.warning("Failed to parse JSON for TextDirector, using raw text")
-                    annotated_text = response_text
-                
-                break # Success
-                
-            except Exception as e:
-                error_msg = str(e)
-                if "503" in error_msg or "429" in error_msg or "UNAVAILABLE" in error_msg or "limit" in error_msg.lower():
-                    if attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt)
-                        self.logger.warning(f"Errore API temporaneo (503/429), ritento in {delay} secondi... ({e})")
-                        time.sleep(delay)
-                    else:
-                        self.logger.error(f"TextDirector fallito definitivamente dopo {max_retries} tentativi: {e}")
-                        annotated_text = text_content
-                else:
-                    self.logger.error(f"Errore TextDirector critico: {e}")
-                    annotated_text = text_content
-                    break
-            
-        # Post-processing deterministico delle pause SEMPRE applicato
-        annotated_text = self._deterministic_formatting_fix(annotated_text)
-        
-        # Log successo globale
-        self.logger.info("TextDirector completato: Marcatori e pause ottimizzati")
-        
-        return annotated_text
 
 
     def _deterministic_formatting_fix(self, text: str) -> str:
@@ -429,21 +373,22 @@ class SceneDirector(BaseStage):
         # Carica variabili d'ambiente
         load_dotenv()
         
+        # Load config if path provided, else let BaseStage do it
+        cfg = get_config(config_path) if config_path else None
+        
         super().__init__(
             stage_name="scene_director",
             stage_number=3,
-            config_path=config_path,
-            logger=logger
+            config=cfg
         )
         # Use standardized queues from config
-        self.input_queue = self.cfg.queues.regia
-        self.output_queue = self.cfg.queues.voice
-            input_queue=cfg.queues.semantic,
-            output_queue=cfg.queues.voice,
-            config=cfg,
-        )
-        self.persistence = DiasPersistence()
-        self.logger = logger or logging.getLogger(__name__)
+        self.input_queue = self.config.queues.semantic
+        self.output_queue = self.config.queues.regia
+        
+        # Preserve BaseStage logger (configured with file handler)
+        if logger:
+            self.logger = logger
+        # self.persistence = DiasPersistence()
         
         # Check if mock services are enabled
         mock_services = os.getenv('MOCK_SERVICES', 'false').lower() == 'true'
@@ -460,22 +405,26 @@ class SceneDirector(BaseStage):
         self.tracker = ActiveTaskTracker(self.redis, self.logger)
         
         # Inizializza TextDirector con il client (mock o reale)
-        self.text_director = TextDirector(self.gemini_client, self.config, self.logger)
+        self.text_director = TextDirector(self.gemini_client, self.config, self.redis, self.logger)
         
         self.logger.info("Stage C Scene Director inizializzato")
         
     def _validate_input(self, data: Dict[str, Any]) -> bool:
         """Valida input da Stage B - calcola count dai dati reali"""
-        # Accetta sia job_id che analysis_id
-        if "job_id" not in data and "analysis_id" not in data:
-            self.logger.warning("Campo mancante: job_id o analysis_id")
-            return False
+        # Accepet job_id, analysis_id or macro_job_id (or none, will be generated)
+        # We don't fail if missing here as we generate a stable job_id in process_item
             
-        required_fields = ["book_id", "block_id", "entities", "relations", "concepts"]
+        # Allow project_id or book_id
+        required_fields = ["entities", "relations"]
+        has_id = "project_id" in data or "book_id" in data
+        has_block_id = "block_id" in data or "chunk_label" in data
         
         # Controlla campi base
-        if not all(field in data for field in required_fields):
-            self.logger.warning(f"Campi mancanti: {[f for f in required_fields if f not in data]}")
+        if not all(field in data for field in required_fields) or not has_block_id or not has_id:
+            missing = [f for f in required_fields if f not in data]
+            if not has_block_id: missing.append("block_id")
+            if not has_id: missing.append("project_id")
+            self.logger.warning(f"Campi base mancanti: {missing}")
             return False
             
         # Calcola count dai dati reali
@@ -486,60 +435,31 @@ class SceneDirector(BaseStage):
         self.logger.info(f"Validato: {data['entities_count']} entità, {data['relations_count']} relazioni, {data['concepts_count']} concetti")
         return True
         
-    def _load_macro_analysis(self, book_id: str, block_id: str, job_id: str = None) -> Dict[str, Any]:
+    def _load_macro_analysis(self, project_id: str, block_id: str, job_id: str = None) -> Dict[str, Any]:
         """Carica analisi semantica da Stage B (Micro o Macro)"""
         try:
-            # Coherence check for clean title
-            clean_title = "".join([c if c.isalnum() else "-" for c in book_id]).strip("-")
-            
-            # 1. Prova caricamento diretto basato sul nome (Micro-Chunk)
-            # block_id nello Stage C è ora la chunk_label (es: chunk-001-micro-001)
+            # 1. Caricamento DETERMINISTICO basato sul nome (Micro-Chunk)
             micro_semantic_label = f"{block_id}-semantic"
-            data = self.persistence.load_stage_output("b", clean_title, micro_semantic_label)
+            data = self.persistence.load_stage_output("b", project_id, micro_semantic_label)
             if data:
                 return data
             
-            # 2. Fallback: logica di scansione originale
-            stage_b_path = self.persistence.base_path / "stage_b" / "output" / clean_title
-            if stage_b_path.exists():
-                for file in stage_b_path.glob("*.json"):
-                    try:
-                        with open(file, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                            if data.get("block_id") == block_id:
-                                return data
-                    except Exception:
-                        continue
-                        
-            raise FileNotFoundError(f"Analisi non trovata per block_id={block_id} in Stage B")
+            # Se arriviamo qui, il file DEVE esserci o è un errore a monte
+            raise FileNotFoundError(f"Analisi deterministica non trovata per project_id={project_id}, block_id={block_id} in Stage B")
                 
         except Exception as e:
             self.logger.error(f"Errore caricamento analisi: {e}")
             raise
             
-    def _load_text_block(self, book_id: str, block_id: str) -> str:
+    def _load_text_block(self, project_id: str, block_id: str) -> str:
         """Carica blocco testo da Stage A (Micro o Macro)"""
         try:
-            clean_title = "".join([c if c.isalnum() else "-" for c in book_id]).strip("-")
-            
-            # 1. Prova caricamento diretto (Micro-Chunk)
-            data = self.persistence.load_stage_output("a", clean_title, block_id)
+            # 1. Caricamento DETERMINISTICO (Micro-Chunk)
+            data = self.persistence.load_stage_output("a", project_id, block_id)
             if data:
                 return data.get("block_text", "")
             
-            # 2. Fallback: logica di scansione originale
-            stage_a_path = self.persistence.base_path / "stage_a" / "output" / clean_title
-            if stage_a_path.exists():
-                for file in stage_a_path.glob("*.json"):
-                    try:
-                        with open(file, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                            if data.get("book_id") == book_id and data.get("block_id") == block_id:
-                                return data.get("block_text", "")
-                    except Exception:
-                        continue
-                    
-            raise FileNotFoundError(f"Blocco testo non trovato per book_id={book_id}, block_id={block_id}")
+            raise FileNotFoundError(f"Blocco testo deterministico non trovato per project_id={project_id}, block_id={block_id} in Stage A")
                 
         except Exception as e:
             self.logger.error(f"Errore caricamento blocco testo: {e}")
@@ -680,8 +600,8 @@ class SceneDirector(BaseStage):
         }
         
     def _create_scene_script_dynamic(self, dynamic_scene: Dict[str, Any], scene_num: int, 
-                                   macro_analysis: Dict[str, Any], book_id: str, 
-                                   chunk_label: str, clean_title: str,
+                                   macro_analysis: Dict[str, Any], project_id: str, 
+                                   chunk_label: str,
                                    chapter_id: str, job_id: str) -> Dict[str, Any]:
         """Crea scene script basato su una scena generata DINAMICAMENTE da Gemini."""
         
@@ -714,8 +634,7 @@ class SceneDirector(BaseStage):
 
         return {
             "job_id": job_id,
-            "book_id": book_id,
-            "clean_title": clean_title,
+            "project_id": project_id,
             "chunk_label": chunk_label,
             "chapter_id": chapter_id,
             "scene_id": mock_scene["scene_id"],
@@ -726,8 +645,6 @@ class SceneDirector(BaseStage):
             "speaker": dynamic_scene.get("speaker", None),
             "pause_after_ms": dynamic_scene.get("pause_after_ms", 200),
             "has_dialogue": dynamic_scene.get("has_dialogue", False),
-            "dialogue_notes": dynamic_scene.get("dialogue_notes", None),
-            "fish_annotated_text": None,
             "tts_backend": "qwen3-tts-1.7b",
             "primary_emotion": primary_emotion,
             "word_count": word_count,
@@ -743,22 +660,26 @@ class SceneDirector(BaseStage):
     def process_item(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Processa un item da Stage B con la nuova logica Emotional Beats"""
         try:
-            self.logger.info(f"Processing Stage C (Dynamic): {item.get('book_id')} - {item.get('block_id')}")
+            # [SANITY CHECK] Force the official sanitized ID as the only truth
+            raw_id = item.get("project_id") or item.get("book_id") or "unknown"
+            project_id = DiasPersistence.normalize_id(raw_id)
             
-            # Valida input
-            if not self._validate_input(item):
-                self.logger.error("Input validation failed")
-                return None
-                
-            # Coherence: Use normalized IDs from the message
-            raw_book_id = item.get("book_id", "unknown")
-            clean_title = item.get("clean_title") or self.persistence.no            block_id = item.get("chunk_label") or item.get("block_id") # Micro-chunk label as primary ID
+            # [BACKWARD COMPATIBILITY] Ensure legacy names are available for logging/Registry
+            book_id = project_id
+            clean_title = project_id
+            
+            block_id = item.get("chunk_label") or item.get("block_id") # Micro-chunk label as primary ID
+            
+            # [CRITICAL FIX] Re-initialize persistence with the project-specific context
+            self.persistence = DiasPersistence(project_id=project_id)
+            
+            self.logger.info(f"Processing Stage C (Dynamic): {project_id} - {block_id}")
             
             # --- JOB ID PERSISTENCE ---
             if not item.get("job_id"):
                 # Se non c'è, lo generiamo e lo salviamo nell'item originale
                 import hashlib
-                stable_id_str = f"{book_id}|{block_id}|stage_c_v2"
+                stable_id_str = f"{project_id}|{block_id}|stage_c_v2"
                 job_hash = hashlib.sha256(stable_id_str.encode()).hexdigest()[:12]
                 item["job_id"] = f"job-{job_hash}"
                 self.logger.info(f"Persisting NEW stable job_id: {item['job_id']}")
@@ -767,8 +688,8 @@ class SceneDirector(BaseStage):
             # --------------------------
             
             # Carica dati (ora usano la logica ottimizzata per micro-chunk)
-            macro_analysis = self._load_macro_analysis(book_id, block_id, job_id)
-            text_content = self._load_text_block(book_id, block_id)
+            macro_analysis = self._load_macro_analysis(project_id, block_id, job_id)
+            text_content = self._load_text_block(project_id, block_id)
             
             if not text_content:
                 self.logger.error(f"Testo blocco vuoto per {block_id}")
@@ -776,19 +697,15 @@ class SceneDirector(BaseStage):
 
             # --- SKIPPING LOGIC ---
             chunk_label = block_id # e.g. chunk-001-micro-001
-            self.logger.info(f"🎬 Stage C: processing {clean_title}-{chunk_label}")
-            
-            # Registry task ID for Stage C
-            registry_task_id = f"stage_c_{chunk_label}"
-")
+            self.logger.info(f"🎬 Stage C: processing {project_id}-{chunk_label}")
             
             # Registry task ID for Stage C
             registry_task_id = f"stage_c_{chunk_label}"
             
             # Check for Master Scene File
-            existing_scenes_master = self.persistence.load_stage_output("c", clean_title, f"{chunk_label}-scenes")
+            existing_scenes_master = self.persistence.load_stage_output("c", project_id, f"{chunk_label}-scenes")
             if existing_scenes_master:
-                self.logger.info(f"⏭️ Skipping Gemini: Master scene list già presente per {clean_title}-{chunk_label} (Registry: {registry_task_id})")
+                self.logger.info(f"⏭️ Skipping Gemini: Master scene list già presente per {project_id}-{chunk_label} (Registry: {registry_task_id})")
                 scene_scripts = existing_scenes_master.get("scenes", [])
                 
                 # Invia ogni scena caricata alla coda successiva SOLO se auto_push è attivo
@@ -801,11 +718,11 @@ class SceneDirector(BaseStage):
                         self.logger.info(f"⏸️ Manual Gate (Skip Logic): Scene {scene_script['scene_id']} not pushed (AUTO_PUSH=false)")
                 
                 # Mark as Completed in Registry if it was skipped due to disk presence
-                self.tracker.mark_as_completed(book_id, registry_task_id, "disk_cache")
+                self.tracker.mark_as_completed(project_id, registry_task_id, "disk_cache")
 
                 return {
                     "stage": self.STAGE_NAME,
-                    "book_id": book_id,
+                    "project_id": project_id,
                     "block_id": block_id,
                     "job_id": job_id,
                     "scenes_count": len(scene_scripts),
@@ -814,7 +731,7 @@ class SceneDirector(BaseStage):
             # ----------------------
 
             # Mark as In-Flight in Registry (aria:c:dias:job-...)
-            self.tracker.mark_as_inflight(book_id, registry_task_id, f"aria:c:dias:job-{book_id}-{chunk_label}")
+            self.tracker.mark_as_inflight(project_id, registry_task_id, f"aria:c:dias:job-{project_id}-{chunk_label}")
 
             # 1. Chiamata UNICA a Gemini per segmentazione e normalizzazione
             self.logger.info("🎬 Generazione scene dinamiche (Emotional Beats)...")
@@ -826,7 +743,7 @@ class SceneDirector(BaseStage):
                 text_content, 
                 emotion=primary_emotion,
                 emotion_description=emotion_desc,
-                book_id=book_id,
+                project_id=project_id,
                 block_id=block_id,
                 job_id=job_id,
                 macro_analysis=macro_analysis,  # V1.4: full Stage B context
@@ -839,13 +756,13 @@ class SceneDirector(BaseStage):
             for i, d_scene in enumerate(dynamic_scenes):
                 # scene_num starts from 1 for each micro-chunk
                 script = self._create_scene_script_dynamic(
-                    d_scene, i + 1, macro_analysis, book_id, chunk_label, clean_title, "chapter_001", job_id
+                    d_scene, i + 1, macro_analysis, project_id, chunk_label, "chapter_001", job_id
                 )
                 scene_scripts.append(script)
                 
             # Salva Master JSON con tutte le scene
             master_output = {
-                "book_id": book_id,
+                "project_id": project_id,
                 "block_id": block_id,
                 "chunk_label": chunk_label,
                 "scenes": scene_scripts,
@@ -855,12 +772,13 @@ class SceneDirector(BaseStage):
             output_file = self.persistence.save_stage_output(
                 self.STAGE_NAME, 
                 master_output, 
-                clean_title, 
-                f"{chunk_label}-scenes"
+                project_id, 
+                f"{chunk_label}-scenes",
+                include_timestamp=False
             )
             
             # Mark as Completed in Registry
-            self.tracker.mark_as_completed(book_id, registry_task_id, output_file)
+            self.tracker.mark_as_completed(project_id, registry_task_id, output_file)
 
             # 3. Handle Output Pushing (Gatekeeper logic)
             auto_push = os.getenv("AUTO_PUSH_TO_STAGE_D", "false").lower() == "true"
@@ -870,9 +788,10 @@ class SceneDirector(BaseStage):
                 self.persistence.save_stage_output(
                     self.STAGE_NAME, 
                     scene_script, 
-                    clean_title, 
-                    chunk_label, 
-                    scene_script['scene_id']
+                    project_id, 
+                    None, # chunk_label is already in scene_id
+                    scene_script['scene_id'],
+                    include_timestamp=False
                 )
                 
                 # Invia alla coda successiva SOLO se auto_push è attivo o se esplicitamente richiesto
@@ -886,7 +805,7 @@ class SceneDirector(BaseStage):
             self.logger.info(f"✅ Stage C completato: {len(scene_scripts)} scene dinamiche generate")
             return {
                 "stage": self.STAGE_NAME,
-                "book_id": book_id,
+                "project_id": project_id,
                 "block_id": block_id,
                 "job_id": job_id,
                 "scenes_count": len(scene_scripts),
@@ -908,15 +827,12 @@ class SceneDirector(BaseStage):
     def process(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
         Processa un messaggio da Stage B con analisi semantica
-        
-        Args:
-            message: Dict con book_id, block_id, analysis_id, entities_count, etc.
-            
-        Returns:
-            Dict con risultato del processing
         """
-        self.logger.info(f"=== Stage C Processing Started ===")
-        self.logger.info(f"Book ID: {message.get('book_id')}")
+        # Nuova logica Sprint 4: Persistence isolata per progetto
+        project_id = message.get("book_id") or "unknown"
+        self.persistence = DiasPersistence(project_id=project_id)
+
+        self.logger.info(f"=== Stage C Processing for project: {project_id} ===")
         self.logger.info(f"Block ID: {message.get('block_id')}")
         self.logger.info(f"Analysis ID: {message.get('analysis_id')}")
         
@@ -941,13 +857,17 @@ def main():
     
     args = parser.parse_args()
     
-    # Setup environment
-    if args.mock:
-        os.environ["MOCK_SERVICES"] = "true"
-        
-    # Setup logging
-    from src.common.logging_setup import get_logger
-    logger = get_logger("scene_director")
+    # 1. Load config to get log file path
+    cfg = get_config()
+    
+    # 2. Setup logging with file handler
+    from src.common.logging_setup import setup_logging
+    logger = setup_logging(
+        "scene_director", 
+        level=cfg.logging.level,
+        log_file=cfg.logging.file
+    )
+    
     logger.info("🎬 Starting DIAS Stage C - Scene Director")
     
     try:

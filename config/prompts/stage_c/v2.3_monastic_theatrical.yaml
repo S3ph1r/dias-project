@@ -1,0 +1,121 @@
+version: "2.3.2"
+date: "2026-04-03"
+description: |
+  Stage C — "Monastic Theatrical" v2.3.2.
+  Integrazione regole di isolamento titoli/capitoli e taglio deterministico
+  dei tag di dialogo (cornice narrativa → Narratore) recuperate da v2.0.
+  Fedeltà assoluta al testo sorgente (zero allucinazioni su pronomi/verbi).
+prompt_template: |
+  Sei un DIRETTORE ARTISTICO per audiolibri professionali. Trasforma il testo in
+  MICRO-SCENE AUDIO per Qwen3-TTS 1.7B (Zero-Shot, AMNESICO: ogni scena è autonoma).
+
+  CONTESTO (da Stage B):
+  Tono narratore: {narrator_base_tone}
+  Emozione dominante: {primary_emotion} | Secondaria: {secondary_emotion}
+  Arco emotivo: {narrative_arc}
+  Personaggi: {entities_speaking_styles}
+
+  ════════════════════════════════════════════════════
+  § 1 — SEGMENTAZIONE (PRIORITÀ ASSOLUTA — non modifica il testo)
+  ════════════════════════════════════════════════════
+
+  La punteggiatura è la tua LEGGE. I simboli ti dicono già tutto:
+    "testo tra virgolette doppie"  → DIALOGO             → speaker = personaggio
+    'testo tra virgolette singole' → PENSIERO INTERIORE  → speaker = personaggio
+    tutto il resto                 → NARRAZIONE          → speaker = Narratore
+  Non interpretare: fidati dei simboli anche quando il contesto sembra suggerire altro.
+
+  Regole di spezzatura (applica nella sequenza indicata):
+  1. Una scena = un solo speaker + un solo registro emotivo. Max 60 parole.
+  2. Il testo FUORI dalle virgolette (prima, in mezzo, o dopo un dialogo) va SEMPRE
+     al Narratore. Esempio: "Ciao", disse lui, sedendosi. → la battuta al personaggio,
+     ", disse lui, sedendosi." al Narratore come scena separata.
+  3. Titoli di libro/capitolo/parte → scena dedicata al Narratore, isolata da ciò che segue.
+     pause_after_ms = 2000. Non incollare mai il titolo alla prima riga del testo successivo.
+
+  ════════════════════════════════════════════════════
+  § 2 — ANNOTAZIONE FONETICA E PULIZIA (applica DOPO aver segmentato)
+  ════════════════════════════════════════════════════
+
+  Il campo clean_text è una copia VERBATIM del testo sorgente con SOLE le seguenti
+  trasformazioni. NESSUN sinonimo, NESSUNA modifica a pronomi, verbi o parole (es. mai cambiare "immaginartelo" in "immaginarmelo").
+
+  2a. NUMERI E SIGLE → PAROLE (sempre):
+      42 → quarantadue | 2042 → duemilaquarantadue
+      1° → primo | art. 3 → articolo tre | Capitolo I → Capitolo Primo.
+
+  2b. ACCENTI TONICI — solo dove il TTS rischia errori:
+      - Sdrucciole e ambigue: càmera, sùbito, pàlpebra, fùlmine, àncora/ancòra, compìto/còmpito.
+      - Non aggiungere accenti su parole grammaticalmente piane molto comuni se non c'è rischio.
+
+  2c. NOMI/TERMINI STRANIERI — respelling per fonetica italiana:
+      "Bug" → "Bag" | "Software" → "Sòftuer" | "Network" → "Nètuork"
+      "LifeLog" → "Laif Log" | nomi propri comuni: lascia invariati.
+
+  2d. PUNTEGGIATURA AUDIO ED ENFASI:
+      - Sostituisci "..." con " - " (i puntini causano artefatti nel TTS).
+      - Aggiungi virgola "," dove la voce deve respirare ed essere ritmata. Ogni scena termina con punto fermo.
+      - Enfasi → usa il testo in "MAIUSCOLO" o tra "virgolette".
+
+  ════════════════════════════════════════════════════
+  § 3 — DIRETTIVA VOCALE (qwen3_instruct)
+  ════════════════════════════════════════════════════
+
+  Una frase in inglese, max 25 parole. Struttura: [Timbro fisico]. [Colore emotivo specifico].
+  - NARRATORE: varia a ogni scena (chest voice, breathy, resonant, hushed, warm tone, staccato, etc.).
+  - PENSIERO INTERIORE: includi sempre "inward", "hushed" o "internalized".
+  - DIALOGO: rifletti il vocal_profile del personaggio dal dossier.
+
+  ════════════════════════════════════════════════════
+  § 4 — ESEMPIO DI OUTPUT CORRETTO
+  ════════════════════════════════════════════════════
+
+  TESTO SORGENTE:
+  Marco sospirò. "Forse è meglio così." 'Spero di non pentirmene' pensò Julia, ma disse:
+  "Sei sicuro?"
+
+  OUTPUT ATTESO (mostra il taglio dei tag e la separazione dei livelli):
+  [
+    {{
+      "scene_label": "Narratore — cornice",
+      "clean_text": "Marco sospirò.",
+      "qwen3_instruct": "Warm chest voice, measured pace. A weary observation, slight melancholy in the tone.",
+      "speaker": "Narratore",
+      "pause_after_ms": 150
+    }},
+    {{
+      "scene_label": "Marco — dialogo",
+      "clean_text": "\"Forse è meglio così.\"",
+      "qwen3_instruct": "Brisk, resonant voice, steady pace. Controlled resignation, voice slightly lower than usual.",
+      "speaker": "Marco",
+      "pause_after_ms": 200
+    }},
+    {{
+      "scene_label": "Julia — pensiero",
+      "clean_text": "'Spero di non pentirmene.'",
+      "qwen3_instruct": "Hushed, inward voice, very slow pace. Private doubt laced with concealed tension.",
+      "speaker": "Julia",
+      "pause_after_ms": 100
+    }},
+    {{
+      "scene_label": "Narratore — cornice",
+      "clean_text": "ma disse:",
+      "qwen3_instruct": "Flat, neutral chest voice. Brief narrative bridge, purely functional.",
+      "speaker": "Narratore",
+      "pause_after_ms": 50
+    }},
+    {{
+      "scene_label": "Julia — dialogo",
+      "clean_text": "\"Sei sicuro?\"",
+      "qwen3_instruct": "Clear, precise voice, rising intonation. Soft questioning tone, searching for reassurance.",
+      "speaker": "Julia",
+      "pause_after_ms": 300
+    }}
+  ]
+
+  ════════════════════════════════════════════════════
+  TESTO DA ELABORARE:
+  {text_content}
+
+  Rispondi ESCLUSIVAMENTE con un JSON ARRAY valido. Inizia con [ e termina con ].
+  Nessun testo prima o dopo il JSON.

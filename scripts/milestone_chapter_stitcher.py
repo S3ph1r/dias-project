@@ -17,8 +17,8 @@ TEMP_DIR = BASE_DIR / "temp" / "stitcher"
 OUTPUT_DIR = DATA_DIR / "milestone_outputs"
 
 # ARIA Asset Server
-ARIA_HOST = "192.168.1.139"
-ARIA_PORT = "8082"
+ARIA_HOST = os.getenv("ARIA_WORKER_IP", "192.168.1.139")
+ARIA_PORT = os.getenv("ARIA_WORKER_PORT", "8082")
 
 def ensure_dirs():
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -30,7 +30,7 @@ def get_all_chapter_scenes() -> Dict[str, List[Dict]]:
     """
     chapters = {} # chapter_id -> list of scenes
     # Find all Master JSONs for the book
-    master_files = sorted(list(STAGE_C_DIR.glob(f"{BOOK_ID}-chunk-*-scenes-*.json")))
+    master_files = sorted(list(STAGE_C_DIR.glob(f"{BOOK_ID}-chunk-*-scenes.json")))
     
     print(f"Found {len(master_files)} Master JSON files.")
     
@@ -103,10 +103,13 @@ def stitch_chapter(chapter_id: str, scenes: List[Dict]):
         chunk_label = scene.get("chunk_label") or "chunk-000"
         scene_id = scene.get("scene_id")
         
-        # Check for local file first (DIAS Centrality)
-        local_vocal_path = STAGE_D_DIR / clean_title / chunk_label / f"{scene_id}.wav"
+        # Check for local file first (DIAS Centrality - RESILIENT STRUCTURE)
+        # New: stage_d/output/Cronache-del-Silicio/Cronache-del-Silicio-chunk-000-micro-000-scene-001.wav
+        unique_id = f"{clean_title}-{scene_id}"
+        local_vocal_path = STAGE_D_DIR / clean_title / f"{unique_id}.wav"
         
         if local_vocal_path.exists():
+            print(f"  [LOC] Found: {local_vocal_path.name}")
             downloaded_files.append(local_vocal_path)
             valid_scenes.append(scene)
             continue

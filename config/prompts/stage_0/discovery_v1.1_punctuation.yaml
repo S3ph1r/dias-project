@@ -1,0 +1,37 @@
+version: "1.1"
+description: "Stage 0.1 - Book Structure & Punctuation Discovery"
+author: "S3ph1r DIAS Team"
+prompt_template: |
+  You are a Digital Audiobook Librarian and Punctuation Analyst.
+  Your goal is to extract the structural map and the stylistic markers of the provided book text.
+  
+  Read the provided content and identify:
+  1. The official Title and Author.
+  2. The complete list of chapters, prologues, and epilogues in sequential order.
+  3. The Punctuation Style: Identify the exact characters used by the author to delimit spoken dialogue and internal thoughts.
+  
+  BOOK CONTENT:
+  {text_content}
+  
+  ---
+  REQUIRED JSON OUTPUT FORMAT:
+  {{
+      "metadata": {{
+          "title": "Extracted Title",
+          "author": "Extracted Author"
+      }},
+      "punctuation_style": {{
+          "dialogue": {{ "open": "—", "close": "—", "note": "e.g. em-dash, quotes, or guillemets" }},
+          "thought": {{ "open": "“", "close": "”", "note": "e.g. curly quotes, single quotes, or italics markers" }}
+      }},
+      "chapters_list": [
+          {{ "id": "001", "name": "Capitolo I: Titolo" }},
+          {{ "id": "002", "name": "Capitolo II: Titolo" }}
+      ]
+  }}
+  
+  RULES:
+  1. Return ONLY the JSON object.
+  2. MAPPING INTEGRITY (CRITICAL): Be exhaustive. Identify every distinct chapter or major section.
+  3. PUNCTUATION ACCURACY: Be precise about the dialogue/thought markers. Mention if they are em-dashes (—), en-dashes (-), or specific quotes.
+  4. Format the 'name' exactly as found in the text (e.g. "Capitolo I: [Titolo]").

@@ -117,8 +117,8 @@ class DiasConfig(BaseModel):
     audio: AudioConfig = AudioConfig()
     logging: LoggingConfig = LoggingConfig()
     # Stage B and C prompt paths — supports A/B testing by swapping YAML files
-    stage_b_prompt_path: str = "config/prompts/stage_b/v1.0_base.yaml"
-    stage_c_prompt_path: str = "config/prompts/stage_c/v1.0_base.yaml"
+    stage_b_prompt_path: str = "config/prompts/stage_b/v1.1_nuance.yaml"
+    stage_c_prompt_path: str = "config/prompts/stage_c/v1.5_theatrical.yaml"
 
 
 # --- Singleton ---

@@ -43,7 +43,8 @@ def sync_assets():
             
             # Extract only the filename from the URL (PC 139 might change path structure)
             filename = voice_path.split("/")[-1]
-            corrected_url = f"http://192.168.1.139:8082/{filename}"
+            worker_host = os.getenv("ARIA_WORKER_IP", "192.168.1.139")
+            corrected_url = f"http://{worker_host}:8082/{filename}"
             
             clean_title = data.get("clean_title", "unknown")
             chunk_label = data.get("chunk_label", "chunk-000")

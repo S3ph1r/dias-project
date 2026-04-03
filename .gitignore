@@ -1,4 +1,5 @@
-# DIAS gitignore
+# DIAS Gitignore - Pulizia e Sicurezza
+# Progetto: Distributed Immersive Audiobook System
 
 # Python
 __pycache__/
@@ -8,45 +9,54 @@ __pycache__/
 venv/
 .env
 
-# Audio output (generated, large files)
+# Configurazione Locale (Sostituire con template per Git)
+config/*.local.yaml
+*.env
+
+# Audio Output (Dati di produzione pesanti)
 storage/
+data/
+outputs/
+voices/
 *.wav
 *.mp3
 *.flac
 
-# Models (too large for git)
-models/
-
-# State (runtime)
-state/*.json
-
-# Secrets
-secrets/
-*.key
-
-# IDE
-.vscode/
-.idea/
-*.swp
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Docker volumes
-docker/volumes/
-
-# Data (runtime, too large/private)
-data/
-outputs/
-voices/
+# Analisi e Test
+analysis/
+tests/*.json
+!tests/__init__.py
 *.log
-
-# Temp
 *.tmp
 *.bak
 
-# Node.js & SvelteKit (Added for Dashboard)
+# Documentazione Archivio e Backup
+docs/backups/
+docs/archive/cleanup_*/
+
+# Modelli e Pesi AI
+models/
+
+# Stato Runtime
+state/*.json
+
+# Credenziali e Chiavi
+secrets/
+*.key
+*.pem
+*.pub
+
+# IDE e OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docker
+docker/volumes/
+
+# Node.js & SvelteKit
 node_modules/
 src/dashboard/node_modules/
 src/dashboard/.svelte-kit/

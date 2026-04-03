@@ -14,40 +14,64 @@ export PYTHONPATH="$BASE_DIR"
 # Interpretatore del Virtual Env
 PYTHON_BIN="$BASE_DIR/.venv/bin/python3"
 
-# --- SECURITY GUARD ---
-# Verifica se l'orchestratore è già attivo per evitare duplicati
-if pgrep -f "src/common/orchestrator.py" > /dev/null; then
-    echo "❌ ERRORE: Un'istanza dell'Orchestratore è già in esecuzione!"
-    echo "Esegui prima ./stop_pipeline.sh per pulire i vecchi processi."
-    exit 1
-fi
-# ----------------------
+# --- AMBIENTE ---
+# (Rimosso vecchio blocco di sicurezza per permettere check idempotenti)
 
-# API Hub
-echo "  -> Avvio API Hub (Port 8000)..."
-if ! curl -s http://localhost:8000/health > /dev/null; then
-    nohup "$PYTHON_BIN" -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 > "$LOG_DIR/api_hub.log" 2>&1 &
-    echo "     API Hub avviato."
+# --- COMPONENTS ---
+
+# 1. API Hub (Port 8000)
+echo "  -> Verifica API Hub (Port 8000)..."
+if pgrep -f "src.api.main:app" > /dev/null; then
+    echo "     ✅ API Hub già attivo."
 else
-    echo "     API Hub già attivo."
+    echo "     🚀 Avvio API Hub..."
+    nohup "$PYTHON_BIN" -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 > "$LOG_DIR/api_hub.log" 2>&1 &
+    sleep 2
 fi
 
-# Stage A: Text Ingester (Continua a girare per nuovi upload)
-echo "  -> Avvio Stage A (Text Ingester)..."
-nohup "$PYTHON_BIN" "$BASE_DIR/src/stages/stage_a_text_ingester.py" > "$LOG_DIR/stage_a.log" 2>&1 &
+# 2. Stage A: Text Ingester
+echo "  -> Verifica Stage A (Text Ingester)..."
+if pgrep -f "stage_a_text_ingester.py" > /dev/null; then
+    echo "     ✅ Stage A già attivo."
+else
+    echo "     🚀 Avvio Stage A..."
+    nohup "$PYTHON_BIN" "$BASE_DIR/src/stages/stage_a_text_ingester.py" > "$LOG_DIR/stage_a.log" 2>&1 &
+fi
 
-# Orchestratore Seriale (B -> C -> D)
+# 3. Stage D: Voice Generator (Proxy)
+echo "  -> Verifica Stage D (Voice Generator)..."
+if pgrep -f "stage_d_voice_gen.py" > /dev/null; then
+    echo "     ✅ Stage D già attivo."
+else
+    echo "     🚀 Avvio Stage D..."
+    nohup "$PYTHON_BIN" "$BASE_DIR/src/stages/stage_d_voice_gen.py" > "$LOG_DIR/stage_d.log" 2>&1 &
+fi
+
+# 4. Orchestratore Seriale (Macro-Logic)
 PROJECT_ID=${1:-"Cronache-del-Silicio"}
-echo "  -> Avvio Orchestratore Seriale per PROGETTO: $PROJECT_ID..."
-nohup "$PYTHON_BIN" "$BASE_DIR/src/common/orchestrator.py" "$PROJECT_ID" > "$LOG_DIR/orchestrator.log" 2>&1 &
+echo "  -> Verifica Orchestratore per PROGETTO: $PROJECT_ID..."
+if pgrep -f "src/common/orchestrator.py.*$PROJECT_ID" > /dev/null; then
+    echo "     ✅ Orchestratore per $PROJECT_ID già attivo."
+else
+    echo "     🚀 Avvio Orchestratore per $PROJECT_ID..."
+    nohup "$PYTHON_BIN" "$BASE_DIR/src/common/orchestrator.py" "$PROJECT_ID" > "$LOG_DIR/orchestrator.log" 2>&1 &
+fi
 
-# Dashboard
-echo "  -> Avvio Dashboard (Port 5173)..."
-cd "$BASE_DIR/src/dashboard"
-nohup npm run dev -- --host 0.0.0.0 > "$LOG_DIR/dashboard.log" 2>&1 &
-echo "     Dashboard avviata."
-cd "$BASE_DIR"
+# 5. Dashboard (Port 5173)
+echo "  -> Verifica Dashboard (Port 5173)..."
+if pgrep -f "vite" > /dev/null || pgrep -f "svelte-kit" > /dev/null; then
+    echo "     ✅ Dashboard già attiva."
+else
+    echo "     🚀 Avvio Dashboard..."
+    cd "$BASE_DIR/src/dashboard" || exit
+    nohup npm run dev -- --host 0.0.0.0 > "$LOG_DIR/dashboard.log" 2>&1 &
+    cd "$BASE_DIR" || exit
+fi
 
-echo "✅ Pipeline avviata in modalità SEQUENZIALE via Orchestrator."
-echo "Controlla i log in $LOG_DIR/orchestrator.log per il progresso."
-ps aux | grep -E "orchestrator|stage_a|uvicorn" | grep -v grep
+echo ""
+echo "✨ Pipeline DIAS pronta."
+IP_ADDR=$(hostname -I | awk '{print $1}')
+echo "🔗 Dashboard: http://$IP_ADDR:5173"
+echo "🔗 API Hub:   http://$IP_ADDR:8000/docs"
+echo ""
+echo "Usa ./stop_pipeline.sh per fermare tutto."

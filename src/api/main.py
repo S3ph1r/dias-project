@@ -1,9 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import os
 import json
+import re
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import datetime
 
 from src.common.config import get_config
@@ -11,10 +13,41 @@ from src.common.redis_factory import get_redis_client
 from src.common.registry import ActiveTaskTracker
 from src.common.logging_setup import get_logger
 from src.common.persistence import DiasPersistence
+from src.common.audio_utils import get_audio_metrics
 
 logger = get_logger("api_hub")
 
 app = FastAPI(title="DIAS API Hub", version="1.0.0")
+
+@app.get("/system/workers")
+async def get_workers_status():
+    """
+    Check status of all DIAS workers and Orchestrator.
+    """
+    workers = {
+        "stage_a": "stage_a_text_ingester.py",
+        "stage_b": "stage_b_semantic_analyzer.py",
+        "stage_c": "stage_c_scene_director.py",
+        "stage_d": "stage_d_voice_gen.py",
+        "orchestrator": "src/common/orchestrator.py"
+    }
+    
+    status = {}
+    import subprocess
+    for key, pattern in workers.items():
+        try:
+            # Check specifically for python execution of the script
+            # We use a pattern that matches the script name at the end or with python
+            cmd = f"pgrep -f '[p]ython.*{pattern}'"
+            output = subprocess.check_output(cmd, shell=True).decode()
+            if output.strip():
+                status[key] = "running"
+            else:
+                status[key] = "stopped"
+        except subprocess.CalledProcessError:
+            status[key] = "stopped"
+            
+    return {"status": "success", "workers": status}
 
 # Base directory for data scanning (execution root)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -22,12 +55,30 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 # Instanziazione Persistence per normalizzazione e gestione file
 persistence = DiasPersistence(base_path=str(BASE_DIR / "data"))
 
-app = FastAPI(title="DIAS API Hub", version="1.0.0")
+# Mount static projects directory
+# This allows serving audio from /static/projects/{project_id}/stages/stage_d/output/{filename}
+projects_dir = BASE_DIR / "data" / "projects"
+if not projects_dir.exists():
+    projects_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static/projects", StaticFiles(directory=str(projects_dir)), name="projects")
 
-# Base directory for data scanning (execution root)
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+# ARIA Voice Assets for previews
+aria_assets_path = Path("/home/Projects/NH-Mini/sviluppi/ARIA/data/assets")
+if aria_assets_path.exists():
+    app.mount("/aria-assets", StaticFiles(directory=str(aria_assets_path)), name="aria-assets")
+
+aria_legacy_voices_path = Path("/home/Projects/NH-Mini/sviluppi/ARIA/data/voices")
+if aria_legacy_voices_path.exists():
+    app.mount("/aria-assets/legacy_voices", StaticFiles(directory=str(aria_legacy_voices_path)), name="aria-legacy-voices")
 
 # Enable CORS for SvelteKit
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"🌐 INCOMING: {request.method} {request.url.path}")
+    response = await call_next(request)
+    logger.info(f"📡 OUTGOING: {request.method} {request.url.path} -> STATUS {response.status_code}")
+    return response
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # In production, specify the dashboard URL
@@ -38,6 +89,64 @@ app.add_middleware(
 
 config = get_config()
 redis_client = get_redis_client()
+
+def slugify(text: str) -> str:
+    """
+    Convert a string into a clean project ID using persistence standards.
+    """
+    return persistence.normalize_id(text)
+
+from fastapi import UploadFile, File, BackgroundTasks
+import shutil
+
+def extract_text_task(file_path: Path, txt_path: Path, project_id: str):
+    """
+    Background task to extract text from PDF/EPUB and update project status.
+    """
+    logger = get_logger("api_worker")
+    logger.info(f"Starting background text extraction for {project_id}...")
+    try:
+        import fitz
+        doc = fitz.open(str(file_path))
+        text_parts = []
+        for i, page in enumerate(doc):
+            page_text = page.get_text().strip()
+            if page_text:
+                text_parts.append(page_text)
+        
+        full_text = "\n\f\n".join(text_parts)
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(full_text)
+            
+        logger.info(f"Successfully extracted {len(full_text)} chars for {project_id}")
+        
+        # Update config to ready
+        config_path = file_path.parent.parent / "config.json"
+        if config_path.exists():
+            with open(config_path) as f: cfg = json.load(f)
+            cfg["status"] = "upload_complete"
+            with open(config_path, "w") as f: json.dump(cfg, f, indent=4)
+            
+    except Exception as e:
+        logger.error(f"Background extraction failed for {project_id}: {str(e)}")
+        config_path = file_path.parent.parent / "config.json"
+        if config_path.exists():
+            with open(config_path) as f: cfg = json.load(f)
+            cfg["status"] = "error"
+            cfg["error"] = str(e)
+            with open(config_path, "w") as f: json.dump(cfg, f, indent=4)
+
+            
+        # Trigger Stage 0 (Intelligence) via Redis
+        # redis_client.rpush("dias:q:0:intel", json.dumps({"project_id": project_id}))
+        
+        return {
+            "status": "success",
+            "project_id": project_id,
+            "message": f"Project '{project_id}' created and file saved."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
 @app.get("/")
 async def root():
@@ -67,36 +176,271 @@ async def get_aria_nodes() -> List[Dict[str, Any]]:
 @app.get("/projects")
 async def list_projects() -> List[Dict[str, Any]]:
     """
-    List all projects based on files in data/stage_a/output/
+    List all projects from data/projects/
     """
-    projects_dir = BASE_DIR / "data" / "stage_a" / "output"
-    if not projects_dir.exists():
-        return []
-    
+    projects_dir = BASE_DIR / "data" / "projects"
     projects = []
-    found_titles = {} # Map title -> {last_mod, count}
     
-    for file in projects_dir.glob("*.json"):
-        parts = file.stem.split("-chunk-")
-        if len(parts) > 0:
-            title = parts[0]
-            mtime = file.stat().st_mtime
-            if title not in found_titles:
-                found_titles[title] = {"last_modified": mtime, "count": 1}
-            else:
-                found_titles[title]["count"] += 1
-                if mtime > found_titles[title]["last_modified"]:
-                    found_titles[title]["last_modified"] = mtime
+    if projects_dir.exists():
+        for d in projects_dir.iterdir():
+            if d.is_dir():
+                pid = d.name
+                config_path = d / "config.json"
+                status = "new"
+                chunk_count = 0
+                
+                if config_path.exists():
+                    try:
+                        with open(config_path) as f:
+                            cfg = json.load(f)
+                            status = cfg.get("status", "unknown")
+                            
+                            # Count chunks by scanning stage_a
+                            stage_a_dir = d / "stages" / "stage_a" / "output"
+                            if stage_a_dir.exists():
+                                chunk_count = len(list(stage_a_dir.glob("*.json")))
+                                
+                            projects.append({
+                                "id": pid,
+                                "name": pid.replace("-", " "),
+                                "total_chunks": chunk_count,
+                                "last_modified": datetime.datetime.fromtimestamp(d.stat().st_mtime).isoformat(),
+                                "status": status
+                            })
+                    except: pass
     
-    for title, info in found_titles.items():
-        projects.append({
-            "id": title,
-            "name": title.replace("-", " "),
-            "total_chunks": info["count"],
-            "last_modified": datetime.datetime.fromtimestamp(info["last_modified"]).isoformat()
-        })
+    # Sort by last modified
+    return sorted(projects, key=lambda x: x["last_modified"], reverse=True)
+
+@app.post("/projects/upload")
+async def upload_project(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    """
+    Upload a new project file (PDF, EPUB, DOCX), create directory,
+    and trigger background text extraction.
+    """
+    # 1. Normalize ID using persistence standard
+    project_id = persistence.normalize_id(file.filename)
+    project_dir = BASE_DIR / "data" / "projects" / project_id
     
-    return projects
+    project_dir.mkdir(parents=True, exist_ok=True)
+    source_dir = project_dir / "source"
+    source_dir.mkdir(exist_ok=True)
+    
+    # 2. Save original file (nome originale preservato)
+    file_path = source_dir / file.filename
+    with open(file_path, "wb") as f:
+        f.write(await file.read())
+        
+    # 3. Path for text extraction - Usa ID normalizzato per il file di testo
+    txt_filename = f"{project_id}.txt"
+    txt_path = source_dir / txt_filename
+    
+    # 4. Initialize config with 'processed_text' pointer
+    config_path = project_dir / "config.json"
+    with open(config_path, "w") as f:
+        json.dump({
+            "project_id": project_id,
+            "original_filename": file.filename,
+            "processed_text": f"source/{txt_filename}", # Puntatore deterministico
+            "status": "extracting",
+            "created_at": datetime.datetime.now().isoformat()
+        }, f, indent=4)
+
+    # 5. Trigger extraction in background to avoid timeouts
+    background_tasks.add_task(extract_text_task, file_path, txt_path, project_id)
+    
+    return {
+        "project_id": project_id,
+        "status": "extracting",
+        "message": f"Project {project_id} uploaded. Text extraction started in background."
+    }
+
+def get_project_dir(project_id: str) -> Path:
+    """
+    Helper to find the project directory case-insensitively and with flexible normalization.
+    """
+    # 1. Try case-insensitive search in projects folder (most robust)
+    projects_root = BASE_DIR / "data" / "projects"
+    if projects_root.exists():
+        for d in projects_root.iterdir():
+            if d.is_dir():
+                # Check normalized match
+                if persistence.normalize_id(d.name) == persistence.normalize_id(project_id):
+                    return d
+                # Check direct match
+                if d.name.lower() == project_id.lower():
+                    return d
+                    
+    # 2. Fallback to direct path
+    return BASE_DIR / "data" / "projects" / persistence.normalize_id(project_id)
+
+@app.post("/projects/{project_id}/analyze")
+async def analyze_project(project_id: str):
+    """
+    Manually trigger Stage 0 Intelligence analysis for a project.
+    Lancia automaticamente il worker in modalità on-demand per il progetto specificato.
+    """
+    project_dir = get_project_dir(project_id)
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        
+    actual_project_id = project_dir.name
+    
+    # 1. Pulisce la coda Redis da eventuali vecchi messaggi per questo progetto
+    # (Evita duplicati se un worker classico dovesse svegliarsi)
+    try:
+        queue_name = "dias:q:0:intel"
+        # Estraiamo tutti i messaggi, filtriamo e rimettiamo quelli che non ci riguardano
+        # È un'operazione atomica simulata per pulizia
+        all_msgs = redis_client.client.lrange(queue_name, 0, -1)
+        for msg_raw in all_msgs:
+            msg_data = json.loads(msg_raw)
+            if msg_data.get("project_id") == actual_project_id:
+                redis_client.client.lrem(queue_name, 0, msg_raw)
+        logger.info(f"🧹 Pulizia coda Redis completata per {actual_project_id}")
+    except Exception as e:
+        logger.warning(f"⚠️ Impossibile pulire la coda Redis: {e}")
+
+    # 2. GUARD: Controllo se è già in esecuzione
+    import subprocess
+    try:
+        # Cerchiamo il processo specifico per questo progetto
+        pgrep_cmd = ["pgrep", "-f", f"stage_0_intel.py.*--project-id {actual_project_id}"]
+        pgrep_check = subprocess.run(pgrep_cmd, capture_output=True)
+        if pgrep_check.returncode == 0:
+             return {"status": "running", "message": f"L'analisi per {actual_project_id} è già in corso."}
+    except Exception as e:
+        logger.error(f"Errore controllo processi pgrep: {e}")
+
+    # 2. Individuo il file .txt sorgente (necessario per replicare il comportamento legacy)
+    source_dir = project_dir / "source"
+    txt_files = list(source_dir.glob("*.txt"))
+    if not txt_files:
+        raise HTTPException(status_code=400, detail="Source text file (.txt) not found in project sources.")
+    txt_filename = txt_files[0].name
+
+    # 3. AUTO-TRIGGER: Avvia il worker in background in modalità on-demand
+    try:
+        python_bin = BASE_DIR / ".venv" / "bin" / "python3"
+        stage_0_script = BASE_DIR / "src" / "stages" / "stage_0_intel.py"
+        log_file = BASE_DIR / "logs" / "stage_0_intel.log"
+        
+        # Comando detached per non bloccare l'API, passando --project-id e --source-file
+        # Usiamo le virgolette per gestire caratteri speciali e spazi nel nome file
+        cmd = f'nohup env PYTHONPATH=. {python_bin} {stage_0_script} --project-id "{actual_project_id}" --source-file "{txt_filename}" >> {log_file} 2>&1 &'
+        subprocess.Popen(cmd, shell=True, cwd=BASE_DIR)
+        
+        # Aggiorno anche il config.json per riflettere lo stato subito in Dashboard
+        config_path = project_dir / "config.json"
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                cfg = json.load(f)
+            cfg["status"] = "analisi_in_corso"
+            with open(config_path, 'w') as f:
+                json.dump(cfg, f, indent=4)
+        
+        logger.info(f"🚀 Innescato Auto-Stage 0 On-Demand per {actual_project_id}")
+        return {"status": "started", "message": f"Analisi avviata per {actual_project_id}"}
+    except Exception as e:
+        logger.error(f"Errore auto-trigger Stage 0: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # 3. Update status in config
+    config_path = project_dir / "config.json"
+    if config_path.exists():
+        with open(config_path) as f: cfg = json.load(f)
+        cfg["status"] = "analyzing"
+        with open(config_path, "w") as f: json.dump(cfg, f, indent=4)
+
+    return {
+        "project_id": actual_project_id,
+        "status": "analyzing",
+        "message": "Intelligence Analysis triggered automatically."
+    }
+
+@app.get("/projects/{project_id}/fingerprint")
+async def get_project_fingerprint(project_id: str):
+    """
+    Return the book intelligence fingerprint (output of Stage 0).
+    """
+    project_dir = get_project_dir(project_id)
+    # Nuova logica: Usa persistence per risolvere il path coerente
+    current_persistence = DiasPersistence(project_id=project_dir.name)
+    fingerprint_path = current_persistence.get_fingerprint_path()
+    
+    if not fingerprint_path.exists():
+        raise HTTPException(status_code=404, detail="Intelligence analysis not yet completed or not found.")
+        
+    with open(fingerprint_path) as f:
+        data = json.load(f)
+        
+    # Alias di compatibilità per Dashboard Legacy
+    if "chapters_list" in data and "chapters" not in data:
+        data["chapters"] = data["chapters_list"]
+    
+    # Assicuro presenza metadata base per evitare crash frontend
+    if "metadata" not in data:
+        data["metadata"] = {"title": project_id, "author": "Unknown"}
+        
+    return data
+
+@app.get("/projects/{project_id}/preproduction")
+async def get_project_preproduction(project_id: str):
+    """
+    Return the pre-production configuration (casting assignments, etc.).
+    """
+    project_dir = get_project_dir(project_id)
+    current_persistence = DiasPersistence(project_id=project_dir.name)
+    path = current_persistence.get_preproduction_path()
+    
+    if not path.exists():
+        # Return default structure
+        return {"casting": {}, "palette_choice": None}
+        
+    with open(path) as f:
+        return json.load(f)
+
+@app.post("/projects/{project_id}/preproduction")
+async def save_project_preproduction(project_id: str, data: Dict[str, Any]):
+    """
+    Save the pre-production configuration by merging with existing data.
+    """
+    project_dir = get_project_dir(project_id)
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    current_persistence = DiasPersistence(project_id=project_dir.name)
+    path = current_persistence.get_preproduction_path()
+    
+    # Carico i dati esistenti per fare il MERGE invece del BLANK OVERWRITE
+    existing_data = {}
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                existing_data = json.load(f)
+        except Exception as e:
+            logger.error(f"Errore caricamento pre-produzione esistente per merge: {e}")
+
+    # Applico le modifiche (Merge selettivo)
+    if "casting" in data:
+        if "casting" not in existing_data:
+            existing_data["casting"] = {}
+        # Unisco le scelte (Nome -> Voce) mantenendo eventuali altri campi nel dossier
+        existing_data["casting"].update(data["casting"])
+        
+    if "palette_choice" in data:
+        existing_data["palette_choice"] = data["palette_choice"]
+        
+    if "global_voice" in data:
+        existing_data["global_voice"] = data["global_voice"]
+
+    # Altri metadati (come theatrical_standard) vengono preservati perché non sovrascritti nel dict
+    
+    logger.info(f"💾 Salvataggio (Smart Merge) Pre-produzione per {project_id}")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(existing_data, f, indent=4)
+        
+    return {"status": "success", "message": "Pre-production configuration merged and saved."}
 
 # Stage Mapping for Dashboard
 STAGE_MAP = {
@@ -115,29 +459,40 @@ async def get_project_status(project_id: str) -> Dict[str, Any]:
     Detailed progress for a specific book.
     Calculates progress and returns file lists for each stage.
     """
-    project_id = persistence.normalize_id(project_id)
-    base_path = BASE_DIR / "data"
+    project_dir = get_project_dir(project_id)
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    actual_project_id = project_dir.name
+    stages_root = project_dir / "stages"
+    
     stages = ["stage_a", "stage_b", "stage_c", "stage_d", "stage_e", "stage_f", "stage_g"]
     
     detailed_stages = []
     total_chunks = 0
     
     # 1. Get total chunks from Stage A
-    stage_a_dir = base_path / "stage_a" / "output"
-    stage_a_files = sorted([f.name for f in stage_a_dir.glob(f"{project_id}-chunk-*.json")])
+    stage_a_dir = stages_root / "stage_a" / "output"
+    # Note: in project-centric, names might be normalized or keep project prefix
+    stage_a_files = sorted([f.name for f in stage_a_dir.glob("*.json") if "chunk-" in f.name])
     total_chunks = len(stage_a_files)
     
     for stage_key in stages:
-        stage_dir = base_path / stage_key / "output"
+        stage_dir = stages_root / stage_key / "output"
         files = []
         if stage_dir.exists():
-            files = sorted([f.name for f in stage_dir.glob(f"{project_id}-*")])
+            # In project-centric, we list all files in the output dir of that stage
+            files = sorted([f.name for f in stage_dir.glob("*.json")])
+            # If it's stage_d or f, we might have .wav too
+            if stage_key in ["stage_d", "stage_f", "stage_g"]:
+                files.extend(sorted([f.name for f in stage_dir.glob("*.wav")]))
+                files = sorted(files)
         
         # Calculate status
         status = "pending"
         if len(files) > 0:
             if stage_key == "stage_c":
-                status = "done" if any("scenes-" in f for f in files) else "in_progress"
+                status = "done" if any("scenes" in f for f in files) else "in_progress"
             elif len(files) >= total_chunks and total_chunks > 0:
                 status = "done"
             else:
@@ -154,11 +509,34 @@ async def get_project_status(project_id: str) -> Dict[str, Any]:
     completed = sum(1 for s in detailed_stages if s["status"] == "done")
     progress_pct = (completed / len(stages)) * 100
 
+    active_stage_key = f"dias:project:{actual_project_id}:active_stage"
+    active_stage = redis_client.get(active_stage_key)
+    if active_stage:
+        active_stage = active_stage.decode('utf-8') if isinstance(active_stage, bytes) else active_stage
+    else:
+        active_stage = None
+
+    # 2. Get status from config.json
+    project_status = "idle"
+    config_path = project_dir / "config.json"
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                cfg = json.load(f)
+                project_status = cfg.get("status", "idle")
+        except:
+            pass
+
+    if project_status == "completed":
+        progress_pct = 100.0
+
     return {
-        "project_id": project_id,
-        "name": project_id.replace("-", " "),
+        "project_id": actual_project_id,
+        "name": actual_project_id.replace("-", " "),
+        "status": project_status,
         "total_chunks": total_chunks,
         "overall_progress": round(progress_pct, 2),
+        "active_stage": active_stage,
         "stages": detailed_stages
     }
 
@@ -207,16 +585,19 @@ async def reset_project_stage(project_id: str, stage_id: str):
         if not target_dir_name:
             raise HTTPException(status_code=400, detail=f"Invalid stage_id: {stage_id}")
             
-        # 2. Get project clean title (assuming project_id is already the clean title for now or lookup)
-        # For DIAS, project_id is usually the clean_title
+        # 2. Get project clean title
         clean_title = persistence.normalize_id(project_id)
         
-        output_path = BASE_DIR / "data" / target_dir_name / "output" / clean_title
+        # 3. New project-centric path
+        project_persistence = DiasPersistence(project_id=clean_title)
+        output_path = project_persistence.project_root / "stages" / target_dir_name / "output"
         
-        # 3. Delete files if directory exists
+        # 4. Delete files if directory exists
         import shutil
         if output_path.exists():
-            shutil.rmtree(output_path)
+            for f in output_path.glob("*"):
+                if f.is_file(): f.unlink()
+                elif f.is_dir(): shutil.rmtree(f)
             
         # 4. Identify previous stage and re-enqueue
         # This is a bit complex as it depends on the flow. 
@@ -271,14 +652,14 @@ async def check_resume_status(project_id: str):
     Returns a summary of voice usage.
     """
     try:
-        clean_title = persistence.normalize_id(project_id)
-        source_dir = BASE_DIR / "data" / "stage_c" / "output"
+        clean_id = persistence.normalize_id(project_id)
+        source_dir = BASE_DIR / "data" / "projects" / clean_id / "stages" / "stage_c" / "output"
         
         if not source_dir.exists():
             return {"status": "no_source", "voices": {}}
             
         voice_counts = {}
-        for source_file in source_dir.glob(f"{clean_title}-*.json"):
+        for source_file in source_dir.glob(f"{clean_id}-*.json"):
             # Skip the master file if it exists, only scan individual scenes
             if source_file.name.endswith("-scenes.json"):
                 continue
@@ -304,87 +685,32 @@ async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = Non
     try:
         clean_title = persistence.normalize_id(project_id)
         
-        # Define the chain of stages - Based on standardized dias.yaml keys
-        # Mapping: (source_stage_dir, target_stage_dir, target_input_queue_key)
-        stages = [
-            ("stage_a", "stage_b", "ingestion"),
-            ("stage_b", "stage_c", "semantic"),
-            ("stage_c", "stage_d", "voice"), 
-        ]
-        
-        total_pushed = 0
-        
-        for source_stage, target_stage, queue in stages:
-            source_dir = BASE_DIR / "data" / source_stage / "output"
-            target_dir = BASE_DIR / "data" / target_stage / "output"
-            
-            if not source_dir.exists():
-                continue
-                
-            # Scan source for files that don't have a corresponding target
-            import re
-            for source_file in sorted(source_dir.glob(f"{clean_title}-*.json")):
-                with open(source_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                
-                # Extract chunk_label from filename if not reliably in data
-                match = re.search(r'(chunk-\d+)', source_file.name)
-                chunk_from_file = match.group(1) if match else None
+        # --- PERSISTENT SETTINGS (Benchmark Integration) ---
+        voice_override = payload.get("voice_override") if payload else None
+        if voice_override:
+            logger.info(f"Saving persistent voice override '{voice_override}' for project {clean_title}")
+            redis_client.client.hset(f"dias:project:{clean_title}:config", "voice_id", voice_override)
 
-                if target_stage == "stage_d":
-                    if "scenes" in data:
-                        # This is a master file
-                        for scene in data["scenes"]:
-                            scene_id = scene.get("scene_id")
-                            chunk_label = data.get("chunk_label") or chunk_from_file
-                            # Usa glob per ignorare il timestamp di Stage D
-                            search_pattern = f"{clean_title}-{chunk_label}-{scene_id}-*.json"
-                            if not list(target_dir.glob(search_pattern)):
-                                # Apply voice override if provided
-                                voice_override = payload.get("voice_override") if payload else None
-                                if voice_override:
-                                    # Create a copy to avoid mutating the original data
-                                    scene_to_push = scene.copy()
-                                    scene_to_push["voice_id"] = voice_override
-                                else:
-                                    scene_to_push = scene
-                                    
-                                # Use dynamic queue name from config for Stage D
-                                queue_name = config.queues.dict().get(queue)
-                                if queue_name:
-                                    redis_client.push_to_queue(queue_name, scene_to_push)
-                                    total_pushed += 1
-                                else:
-                                    logger.error(f"Queue key {queue} not found in config")
-                else:
-                    # Generic stage logic (e.g. Stage A -> B, Stage B -> C)
-                    chunk_label = data.get("chunk_label") or chunk_from_file
-                    if chunk_label:
-                        search_pattern = f"{clean_title}-{chunk_label}-*.json"
-                        if not list(target_dir.glob(search_pattern)):
-                            # Use dynamic queue name from config
-                            queue_name = config.queues.dict().get(queue)
-                            if queue_name:
-                                # Schema mapping for Resume
-                                message_to_push = data.copy()
-                                
-                                # Stage B expects 'text', Stage A files have 'block_text'
-                                if source_stage == "stage_a" and "block_text" in message_to_push:
-                                    message_to_push["text"] = message_to_push["block_text"]
-                                
-                                # Enforce coherence fields
-                                message_to_push["clean_title"] = clean_title
-                                message_to_push["chunk_label"] = chunk_label
-                                message_to_push["book_id"] = clean_title
-                                
-                                logger.info(f"Resuming {source_stage} -> {target_stage}: Pushing {chunk_label} (block_id: {message_to_push.get('block_id')}, text_len: {len(message_to_push.get('text', ''))})")
-                                
-                                redis_client.push_to_queue(queue_name, message_to_push)
-                                total_pushed += 1
-                            else:
-                                logger.error(f"Queue key {queue} not found in config")
-                        
-        return {"status": "success", "pushed_count": total_pushed}
+        # --- ORCHESTRATOR AUTO-START ---
+        import subprocess
+        try:
+            pgrep_check = subprocess.run(["pgrep", "-f", f"src/common/orchestrator.py {clean_title}"], capture_output=True)
+            if pgrep_check.returncode != 0:
+                logger.info(f"🚀 Avvio Orchestratore in background per il progetto {clean_title}...")
+                python_bin = BASE_DIR / ".venv" / "bin" / "python3"
+                orchestrator_script = BASE_DIR / "src" / "common" / "orchestrator.py"
+                log_file = BASE_DIR / "logs" / "orchestrator.log"
+                
+                # Comando nohup con PYTHONPATH per garantire il caricamento dei moduli di progetto
+                cmd = f"nohup env PYTHONPATH=. {python_bin} {orchestrator_script} {clean_title} >> {log_file} 2>&1 &"
+                subprocess.Popen(cmd, shell=True, cwd=BASE_DIR)
+            else:
+                logger.info(f"✅ Orchestratore già attivo per {clean_title}.")
+        except Exception as e:
+            logger.error(f"Errore durante l'avvio dell'orchestratore: {e}")
+
+        logger.info(f"Pipeline flow delegated to Serial Orchestrator for {clean_title}")
+        return {"status": "success", "message": f"Orchestrator started for {clean_title}"}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -403,16 +729,19 @@ async def push_scene_to_stage_d(project_id: str, payload: Dict[str, str]):
     
     project_id = persistence.normalize_id(project_id)
     
-    # Use BASE_DIR for consistency
-    scene_path = BASE_DIR / "data" / "stage_c" / "output" / project_id / scene_file_name
+    # Nuova logica Sprint 4: Path isolato per progetto
+    scene_path = BASE_DIR / "data" / "projects" / project_id / "stages" / "stage_c" / "output" / scene_file_name
     
     if not scene_path.exists():
-        # Fallback search if project_id folder doesn't exist or file is elsewhere
-        potential_paths = list(BASE_DIR.glob(f"data/stage_c/output/**/{scene_file_name}"))
-        if potential_paths:
-            scene_path = potential_paths[0]
-        else:
-            raise HTTPException(status_code=404, detail=f"Scene file {scene_file_name} not found")
+        # Cerca senza prefisso project_id nel nome file se necessario (per compatibilità nomi puliti)
+        if not scene_file_name.startswith(project_id):
+             alt_name = f"{project_id}-{scene_file_name}"
+             alt_path = scene_path.parent / alt_name
+             if alt_path.exists():
+                 scene_path = alt_path
+    
+    if not scene_path.exists():
+        raise HTTPException(status_code=404, detail=f"Scene file {scene_file_name} not found in project {project_id}")
     
     try:
         with open(scene_path, 'r', encoding='utf-8') as f:
@@ -432,21 +761,58 @@ async def push_scene_to_stage_d(project_id: str, payload: Dict[str, str]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error pushing scene: {str(e)}")
 
-@app.get("/info/voices")
-async def get_available_voices() -> Dict[str, List[str]]:
+@app.get("/aria/registry")
+async def get_aria_registry() -> Dict[str, Any]:
     """
-    Aggregates available voices from all active ARIA nodes.
+    Returns the full ARIA Master Registry from Redis.
+    This is the 'Digital Storefront' for all available backends and assets.
     """
     try:
-        all_voices = set()
+        data = redis_client.get("aria:registry:master")
+        if data:
+            return json.loads(data)
+        return {
+            "status": "not_found", 
+            "message": "Master Registry non ancora pubblicato da ARIA Node."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/info/voices")
+async def get_available_voices() -> Dict[str, Any]:
+    """
+    Aggregates available voices. 
+    Prioritizes metadata-rich voices from the Master Registry.
+    """
+    try:
+        all_voices = {}
+        
+        # 1. Prova il Master Registry (Nuovo Standard Discovery v1.0)
+        registry_data = redis_client.get("aria:registry:master")
+        if registry_data:
+            registry = json.loads(registry_data)
+            # assets -> voices
+            voices_registry = registry.get("assets", {}).get("voices", {})
+            for vid, profile in voices_registry.items():
+                all_voices[vid] = profile
+
+        # 2. Fallback / Aggregazione legacy da nodi attivi
         keys = redis_client.keys("aria:global:node:*:status")
         for key in keys:
             data = redis_client.get(key)
             if data:
                 node_info = json.loads(data)
-                voices = node_info.get("available_voices", [])
-                all_voices.update(voices)
-        return {"voices": sorted(list(all_voices))}
+                legacy_voices = node_info.get("available_voices", [])
+                for vname in legacy_voices:
+                    if vname not in all_voices:
+                        all_voices[vname] = {
+                            "id": vname,
+                            "name": vname.capitalize(),
+                            "status": "legacy",
+                            "metadata": {"description": "Legacy voice (no metadata)"}
+                        }
+        
+        return {"voices": all_voices}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error aggregating voices: {str(e)}")
 
@@ -496,25 +862,163 @@ async def control_project(project_id: str, payload: Dict[str, str]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error applying control: {str(e)}")
 
-@app.get("/projects/{project_id}/output")
-async def get_project_outputs(project_id: str) -> List[Dict[str, Any]]:
+@app.get("/projects/{project_id}/chapters")
+async def get_project_chapters(project_id: str):
     """
-    Lists all generated assets (WAV files) for a specific project.
+    Get all chapters for a project by scanning stage_c output in the project folder.
     """
-    project_id = persistence.normalize_id(project_id)
-    output_dir = BASE_DIR / "data" / "stage_d" / "output"
-    if not output_dir.exists():
+    stage_c_dir = BASE_DIR / "data" / "projects" / project_id / "stages" / "stage_c" / "output"
+    if not stage_c_dir.exists():
         return []
     
-    outputs = []
-    for file in output_dir.glob(f"{project_id}-*.wav"):
-        outputs.append({
-            "filename": file.name,
-            "size_bytes": file.stat().st_size,
-            "url": f"/static/outputs/{file.name}", # Placeholder for the asset server
-            "created_at": datetime.datetime.fromtimestamp(file.stat().st_mtime).isoformat()
-        })
-    return sorted(outputs, key=lambda x: x["filename"])
+    chapters = {}
+    # Find all master files: {project_id}-chunk-{###}-micro-{###}-scenes.json
+    for file in stage_c_dir.glob("*-micro-*-scenes.json"):
+        match = re.search(r"chunk-(\d{3})", file.name)
+        if not match: continue
+        
+        chunk_id = match.group(1)
+        if chunk_id not in chapters:
+            chapters[chunk_id] = {
+                "id": chunk_id,
+                "title": f"Chapter {chunk_id}",
+                "status": "completed",
+                "scene_count": 0
+            }
+        
+        try:
+            with open(file) as f:
+                data = json.load(f)
+                chapters[chunk_id]["scene_count"] += len(data.get("scenes", []))
+                
+                # Count WAVs for this specific chunk/micro
+                stage_d_dir = stage_c_dir.parent.parent / "stage_d" / "output"
+                if stage_d_dir.exists():
+                    match_micro = re.search(r"micro-(\d{3})", file.name)
+                    if match_micro:
+                        micro_id = match_micro.group(1)
+                        # Count WAVs matching this chunk and micro
+                        wav_pattern = f"*-chunk-{chunk_id}-micro-{micro_id}-*.wav"
+                        wav_count = len(list(stage_d_dir.glob(wav_pattern)))
+                        if "wav_count" not in chapters[chunk_id]:
+                             chapters[chunk_id]["wav_count"] = 0
+                        chapters[chunk_id]["wav_count"] += wav_count
+
+                if chapters[chunk_id]["title"].startswith("Chapter"):
+                    t = data.get("chapter_title")
+                    if t: chapters[chunk_id]["title"] = t
+        except: pass
+        
+    return sorted(list(chapters.values()), key=lambda x: x["id"])
+
+@app.get("/projects/{project_id}/chapters/{chapter_id}/scenes")
+async def get_chapter_scenes(project_id: str, chapter_id: str):
+    """
+    Get all scenes for a specific chapter from the project folder.
+    """
+    stage_c_dir = BASE_DIR / "data" / "projects" / project_id / "stages" / "stage_c" / "output"
+    stage_d_dir = BASE_DIR / "data" / "projects" / project_id / "stages" / "stage_d" / "output"
+    
+    scenes = []
+    # Pattern: {project_id}-chunk-{chapter_id}-micro-*-scenes.json
+    pattern = f"*-chunk-{chapter_id}-micro-*-scenes.json"
+    
+    for file in sorted(stage_c_dir.glob(pattern)):
+        try:
+            with open(file) as f:
+                data = json.load(f)
+                for scene in data.get("scenes", []):
+                    scene_idx = scene.get("scene_id", "001")
+                    # liberal match for both old and new formats
+                    # if scene_idx is full (e.g. chunk-001-micro-000-scene-001), use it directly
+                    if "-scene-" in scene_idx:
+                         search_pattern = f"*{scene_idx}.wav"
+                    else:
+                         search_pattern = f"*scene-{scene_idx}.wav"
+                         
+                    wav_matches = list(stage_d_dir.glob(search_pattern))
+                    
+                    if wav_matches:
+                        wav_path = wav_matches[0]
+                        rel_url = wav_path.relative_to(persistence.base_path / "projects")
+                        scene["audio_url"] = f"/static/projects/{rel_url}"
+                        
+                        # Also check for JSON metadata in Stage D
+                        prod_file = wav_path.with_suffix(".json")
+                        if prod_file.exists():
+                            with open(prod_file) as pf:
+                                prod_data = json.load(pf)
+                                scene["voice_id"] = prod_data.get("voice_id", scene.get("voice_id"))
+                                scene["instruct"] = prod_data.get("instruct", scene.get("instruct"))
+                                scene["text"] = prod_data.get("text", scene.get("text"))
+                    
+                    scenes.append(scene)
+        except: pass
+        
+    return scenes
+
+@app.get("/projects/{project_id}/scenes/{scene_id}/metrics")
+async def get_scene_metrics(project_id: str, scene_id: str, chapter_id: Optional[str] = None):
+    """
+    Calculate audio metrics for a scene.
+    """
+    stage_d_dir = BASE_DIR / "data" / "projects" / project_id / "stages" / "stage_d" / "output"
+    
+    if "-scene-" in scene_id:
+        target_scene_idx = scene_id.split("-scene-")[-1]
+    else:
+        target_scene_idx = scene_id
+
+    if chapter_id:
+        pattern = f"cap-{chapter_id}-scene-{target_scene_idx}.wav"
+    else:
+        pattern = f"cap-*-scene-{target_scene_idx}.wav"
+        
+    wav_files = list(stage_d_dir.glob(pattern))
+    if not wav_files:
+        raise HTTPException(status_code=404, detail="Audio file not found")
+        
+    wav_path = wav_files[0]
+    try:
+        metrics = get_audio_metrics(str(wav_path))
+        return metrics
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/projects/{project_id}/scenes/{scene_id}/retry")
+async def retry_scene(project_id: str, scene_id: str, payload: Dict[str, Any] = None):
+    """
+    Re-queue a scene for Stage D (Voice Gen).
+    """
+    stage_c_dir = BASE_DIR / "data" / "projects" / project_id / "stages" / "stage_c" / "output"
+    
+    if "-scene-" in scene_id:
+        scene_file = stage_c_dir / f"{scene_id}.json"
+    else:
+        results = list(stage_c_dir.glob(f"*-scene-{scene_id}.json"))
+        scene_file = results[0] if results else None
+        
+    if not scene_file or not scene_file.exists():
+        raise HTTPException(status_code=404, detail="Original scene metadata not found")
+
+    try:
+        with open(scene_file) as f:
+            message = json.load(f)
+            
+        if payload:
+            if "instruct" in payload:
+                backend = message.get("tts_backend", "")
+                if "qwen3" in backend.lower(): message["qwen3_instruct"] = payload["instruct"]
+                elif "eleven" in backend.lower(): message["eleven_instruct"] = payload["instruct"]
+                else: message["instruct"] = payload["instruct"]
+            
+            if "voice_id" in payload:
+                message["voice_id"] = payload["voice_id"]
+        
+        redis_client.rpush("dias:q:4:regia", json.dumps(message))
+        return {"status": "success", "message": f"Scene {scene_id} re-queued"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

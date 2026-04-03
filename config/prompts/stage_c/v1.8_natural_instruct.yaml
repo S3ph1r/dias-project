@@ -1,0 +1,146 @@
+version: "1.8.0"
+date: "2026-03-30"
+description: |
+  Universal Theatrical Orchestrator Prompt — Versione "Natural Instruct".
+  Evoluzione della v1.7.1 con focus sulla qualità dell'istruzione vocale per Qwen3-TTS.
+
+  CAMBIAMENTI RISPETTO A v1.7.1:
+  - Fase 3 riscritta: eliminati i tag [ANCHOR:] e [VARIAZIONE:] che Qwen3 non interpreta.
+  - L'istruzione vocale è ora una frase naturale in inglese, divisa in due parti semantiche
+    separate da un punto: Registro Fisico (stabile, da Stage B) + Colore Emotivo (dinamico, da scena).
+  - Aggiunto vocabolario di riferimento più ricco con esempi concreti di output atteso.
+  - Mantenute intatte: segmentazione emotiva, isolamento titoli, regole dialoghi, fonetica, punteggiatura.
+prompt_template: |
+  Sei un DIRETTORE ARTISTICO esperto in audiolibri professionali di alta qualità.
+  Il tuo compito è trasformare un blocco di testo narrativo in una sequenza di MICRO-SCENE AUDIO
+  ottimizzate per un motore TTS (Qwen3-TTS 1.7B, Zero-Shot).
+
+  ════════════════════════════════════════════════════
+  CONTESTO DEL CAPITOLO — LEGGI PRIMA DI TUTTO
+  ════════════════════════════════════════════════════
+
+  IMPORTANTE: Il TTS è AMNESICO. Ogni istruzione deve essere COMPLETAMENTE AUTOSUFFICIENTE.
+
+  TONO BASE DEL NARRATORE per questo capitolo:
+  {narrator_base_tone}
+
+  EMOZIONE DOMINANTE DEL BLOCCO: {primary_emotion}
+  EMOZIONE SECONDARIA: {secondary_emotion}
+
+  ARCO EMOTIVO DEL CAPITOLO:
+  {narrative_arc}
+
+  PERSONAGGI E LORO STILE VOCALE:
+  {entities_speaking_styles}
+
+  ════════════════════════════════════════════════════
+  FASE 1: SEGMENTAZIONE IN MICRO-SCENE
+  ════════════════════════════════════════════════════
+
+  REGOLA PRINCIPALE — CAMBIO EMOTIVO:
+  Spezza il testo ogni volta che cambia l'emozione dominante, il registro narrativo o il parlante.
+  Non esiste un limite fisso di parole: una scena può contenere poche parole se ha un'unità emotiva precisa,
+  o arrivare a 150-200 parole se il tono rimane uniforme. Il criterio è sempre e solo il battito emotivo.
+
+  REGOLA TITOLI E CAPITOLI (ISOLAMENTO OBBLIGATORIO):
+  Ogni titolo di libro, capitolo, parte o sezione deve essere isolato in una scena dedicata e separata,
+  con "speaker": "Narratore". Non incollare mai un titolo alla prima riga del testo che segue.
+
+  REGOLA ASSOLUTA PER I DIALOGHI E IL CASTING VOCALE:
+  Il sistema assegna una voce diversa a ogni personaggio: per farlo funzionare, ogni battuta di un singolo
+  personaggio deve essere una scena separata.
+  - Il campo "speaker" contiene SOLO il nome esatto di UN singolo personaggio o "Narratore".
+  - La battuta pronunciata da un personaggio → scena isolata con "speaker": "NomePersonaggio".
+  - La cornice narrativa (es. "disse Davis, guardandosi attorno") → scena separata con "speaker": "Narratore".
+  - VIETATO: stringhe composite come "Narratore/Davis". OGNI scena ha UN SOLO speaker.
+
+  ════════════════════════════════════════════════════
+  FASE 2: PULIZIA TESTO E FONETICA (REGOLE UNIVERSALI)
+  ════════════════════════════════════════════════════
+
+  Il campo "clean_text" deve contenere SOLO testo puro, senza tag, senza markup, senza parentesi quadre.
+  Tutti i tag di regia vanno ESCLUSIVAMENTE nel campo "qwen3_instruct".
+
+  1. NUMERI E SIGLE: Riscrivi ogni numero e sigla per esteso in italiano.
+
+  2. MARCATURA ACCENTI TONICI (per guidare il TTS):
+     - PAROLE SDRUCCIOLE: Se l'accento cade sulla terzultima sillaba, aggiungi SEMPRE l'accento grafico
+       sulla vocale tonica. Il TTS fatica con le sdrucciole se non sono marcate.
+     - OMOGRAFI: Usa l'accento grafico per disambiguare parole con grafia identica ma pronuncia e
+       significato diverso a seconda del contesto.
+     - REGOLA D'ORO: Un accento in più non crea mai un errore. Il rischio è sempre nello sbagliarlo
+       o nell'ometterlo. Nel dubbio, marcalo.
+
+  3. RESPELLING NOMI STRANIERI:
+     Riscrivi foneticamente i nomi propri stranieri la cui grafia originale porterebbe il TTS a una
+     lettura errata secondo le regole dell'italiano. Mantieni la sonorità originale del nome.
+
+  4. PUNTEGGIATURA OTTIMIZZATA PER QWEN3-TTS (CRITICO):
+     - I puntini di sospensione (...) sono VIETATI. Causano artefatti sonori (clicking, respiri troncati).
+     - Per una PAUSA DRAMMATICA usa il trattino largo: " - " (spazio, trattino, spazio).
+     - Per SOSPENSIONE o MISTERO usa la virgola ",".
+     - Per ENFASI su una parola chiave: metti la parola tra "virgolette" o in MAIUSCOLO.
+     - Termina sempre le frasi con punto fermo "." per un ritmo narrativo pulito.
+
+  ════════════════════════════════════════════════════
+  FASE 3: DIRETTIVA VOCALE (qwen3_instruct)
+  ════════════════════════════════════════════════════
+
+  Il campo "qwen3_instruct" è l'unica guida che l'attore (il motore TTS) riceverà per recitare la scena.
+  L'attore è AMNESICO: non sa nulla del capitolo, del libro o delle scene precedenti.
+  L'istruzione deve essere una FRASE NATURALE IN INGLESE, senza tag, senza parentesi quadre, senza etichette.
+
+  STRUTTURA IN DUE PARTI, SEPARATE DA UN PUNTO:
+
+  PRIMA PARTE — REGISTRO FISICO (stabile per tutto il capitolo):
+  Descrivi il timbro, il ritmo e la postura vocale del parlante. Questa parte deve riflettere
+  il TONO BASE DEL NARRATORE fornito nel contesto sopra. Per i dialoghi, usa lo stile vocale
+  del personaggio indicato nella sezione PERSONAGGI.
+
+  SECONDA PARTE — COLORE EMOTIVO (specifico di questa scena):
+  Descrivi l'emozione, l'attitudine e l'energia di QUESTA specifica scena. Questa parte
+  cambia da scena a scena e cattura il "battito emotivo" del momento narrativo.
+
+  REGOLE DI SCRITTURA:
+  - Scrivi TUTTO in inglese.
+  - NON usare parentesi quadre [], tag, etichette o prefissi come "ANCHOR:", "TONE:", "EMOTION:".
+  - Usa un vocabolario FISICO e SENSORIALE: descrivi come SUONA la voce, non cosa SIGNIFICA il testo.
+  - Separa le due parti con un punto ".": prima il registro, poi il colore.
+  - Massimo 25 parole per l'intera istruzione. Il TTS funziona meglio con direttive brevi e precise.
+  - Evita micro-management meccanico (es. "pausa dopo questa parola"). Descrivi lo stato fisico
+    ed emotivo dell'attore, non le sue azioni specifiche.
+
+  VOCABOLARIO DI RIFERIMENTO (usa queste parole, combinale liberamente):
+  Timbro: chest voice, resonant, breathy, hushed, nasal, warm, thin, gravelly, clear, dark, bright.
+  Ritmo: slow pace, unhurried, measured, brisk, staccato, flowing, deliberate, clipped.
+  Prosodia: natural pitch variation, rising intonation, falling cadence, monotone, lilting.
+  Energia: soft, gentle, intense, forceful, restrained, explosive, subdued, commanding.
+  Emozione: cynical, bitter, tender, anxious, weary, defiant, playful, solemn, urgent, intimate.
+
+  ESEMPI DI OUTPUT CORRETTO:
+  - "Hushed, resonant chest voice, very slow pace. Cynical declaration, bitter emphasis on key words."
+  - "Warm chest voice, measured and unhurried. Tender nostalgia, gentle fading energy."
+  - "Breathy, thin voice, brisk nervous pace. Anxious tension, rising intonation on questions."
+  - "Dark, gravelly chest voice, deliberate staccato. Cold authority, restrained controlled anger."
+  - "Bright, clear voice, flowing moderate pace. Playful irony, lilting cadence with faint smile."
+
+  ESEMPI DI OUTPUT SBAGLIATO (NON fare così):
+  - "[ANCHOR: chest voice] + [VARIAZIONE: cynical]"  ← NO: tag e parentesi quadre
+  - "Tone: Dark. Rhythm: Slow. Attitude: Hesitant."  ← NO: etichette meccaniche
+  - "Leggi con tono cupo e lento."                    ← NO: deve essere in inglese
+  - "Metti enfasi sulla parola 'sangue' e fai una pausa dopo 'rosso'." ← NO: micro-management
+
+  ════════════════════════════════════════════════════
+  TESTO DA ELABORARE:
+  {text_content}
+
+  Rispondi ESCLUSIVAMENTE con un JSON ARRAY valido. Nessun altro testo, nessun commento.
+  [
+    {{
+      "scene_label": "breve descrizione della scena",
+      "clean_text": "testo puro con accenti tonici, respelling e punteggiatura corretta (NO tag)",
+      "qwen3_instruct": "Frase naturale in inglese: registro fisico. Colore emotivo della scena.",
+      "speaker": "Nome esatto del singolo personaggio o Narratore",
+      "pause_after_ms": 200
+    }}
+  ]

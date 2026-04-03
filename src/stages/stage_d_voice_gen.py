@@ -41,9 +41,9 @@ class StageDVoiceGeneratorProxy(BaseStage):
             config=config,
             redis_client=redis_client
         )
-        self.input_queue = self.cfg.queues.voice
-        self.output_queue = self.cfg.queues.music
-        self.persistence = DiasPersistence()
+        self.input_queue = self.config.queues.voice
+        self.output_queue = self.config.queues.music
+        # self.persistence = DiasPersistence() # Decommissioned global persistence
         from src.common.registry import ActiveTaskTracker
         print("DEBUG: ActiveTaskTracker imported")
         self.tracker = ActiveTaskTracker(self.redis, self.logger)
@@ -59,27 +59,28 @@ class StageDVoiceGeneratorProxy(BaseStage):
         Invia la scena ad ARIA e attende il risultato.
         """
         try:
+            # [SANITY CHECK] Force the official sanitized ID as the only truth
+            raw_id = message.get("project_id") or message.get("book_id") or "unknown"
+            project_id = DiasPersistence.normalize_id(raw_id)
+            
             job_id = message.get("job_id")
-            book_id = message.get("book_id")
             scene_id = message.get("scene_id")
 
-            self.logger.info(f"Processing Stage D Proxy: Book {book_id} - Scene {scene_id}")
+            # Nuova logica Sprint 4: Persistence isolata per progetto
+            self.persistence = DiasPersistence(project_id=project_id)
+
+            self.logger.info(f"Processing Stage D Proxy: Project {project_id} - Scene {scene_id}")
             
             # 1. Recupera dati completi della scena
             if "text_content" not in message:
                 self.logger.warning("Messaggio incompleto, caricamento da persistenza...")
                 return None
 
-            # Genera identificatori unici per il task e file
-            clean_title = message.get("clean_title") or "".join([c if c.isalnum() else "-" for c in book_id]).strip("-")
-            chunk_label = message.get("chunk_label") or "chunk-000"
-            unique_aria_job_id = f"{clean_title}-{chunk_label}-{scene_id}"
+            # scene_id is already unique and contains chunk info (from Stage C fix)
+            unique_aria_job_id = f"{project_id}-{scene_id}"
 
             # --- SETUP DIRECTORY LOCALE (LXC 190) ---
-            # Correzione: rimosso "data" ridondante (gia' presente in base_path)
-            # Organizzazione: Piatto dentro la cartella del libro (per separare WAV da JSON)
-            local_dir = self.persistence.base_path / "stage_d" / "output" / clean_title
-            local_dir.mkdir(parents=True, exist_ok=True)
+            local_dir = self.persistence.project_root / "stages" / "stage_d" / "output"
             local_filename = f"{unique_aria_job_id}.wav"
             local_path = local_dir / local_filename
 
@@ -90,8 +91,9 @@ class StageDVoiceGeneratorProxy(BaseStage):
                 message["voice_path"] = str(local_path)
                 message["voice_duration_seconds"] = duration
                 message["voice_status"] = "completed"
-                self.persistence.save_stage_output("d", message, clean_title, chunk_label, scene_id)
-                self.tracker.mark_as_completed(book_id, unique_aria_job_id, str(local_path))
+                # Use include_timestamp=False for Professional Resilience. scene_id is enough.
+                self.persistence.save_stage_output("d", message, project_id, scene_id=scene_id, include_timestamp=False)
+                self.tracker.mark_as_completed(project_id, unique_aria_job_id, str(local_path))
                 return message
 
             # === STEP 2: CHECK REMOTO (ARIA PC 139) ===
@@ -110,8 +112,8 @@ class StageDVoiceGeneratorProxy(BaseStage):
                         message["voice_path"] = str(local_path)
                         message["voice_duration_seconds"] = duration
                         message["voice_status"] = "completed"
-                        self.persistence.save_stage_output("d", message, clean_title, chunk_label, scene_id)
-                        self.tracker.mark_as_completed(book_id, unique_aria_job_id, str(local_path))
+                        self.persistence.save_stage_output("d", message, project_id, scene_id=scene_id, include_timestamp=False)
+                        self.tracker.mark_as_completed(project_id, unique_aria_job_id, str(local_path))
                         return message
                     else:
                         self.logger.warning("Download fallito nonostante il file remoto esista. Procedo alla generazione...")
@@ -153,19 +155,73 @@ class StageDVoiceGeneratorProxy(BaseStage):
 
             # Override da messaggio (Stage C) o da Config
             instruct = message.get("qwen3_instruct") or default_instruct
-            voice_id = message.get("voice_id") or default_voice
-            temp = message.get("temperature") or temp or default_temp
+            # 2. Risoluzione Voice ID (Priorità: Preproduction JSON > Messaggio > Config > Default)
+            voice_id = None
+            
+            # Nuova logica: Usa persistence per risolvere il path coerente del dossier pre-produzione
+            preprod_path = self.persistence.get_preproduction_path()
+            
+            preprod_data = {}
+            if preprod_path.exists():
+                try:
+                    with open(preprod_path, 'r', encoding='utf-8') as f:
+                        preprod_data = json.load(f)
+                    self.logger.info(f"💾 Dossier Pre-produzione caricato per {project_id}")
+                except Exception as e:
+                    self.logger.error(f"⚠️ Errore caricamento {preprod_path}: {e}")
+
+            # A. Priorità 1: Casting specifico per il personaggio (se la scena ha un speaker)
+            speaker = message.get("speaker")
+            casting = preprod_data.get("casting", {})
+            if speaker and speaker in casting:
+                voice_id = casting[speaker]
+                self.logger.info(f"🎭 Voice ID per personaggio '{speaker}': {voice_id} (da casting)")
+
+            # B. Priorità 2: Global Voice override (Narratore)
+            if not voice_id:
+                voice_id = preprod_data.get("global_voice")
+                if voice_id:
+                    self.logger.info(f"🌍 Usando Global Voice (Narratore): {voice_id}")
+
+            # C. Priorità 3: Voice ID già nel messaggio (dal Stage C o test manuali)
+            if not voice_id:
+                voice_id = message.get("voice_id")
+
+            # D. Priorità 4: Redis config legacy
+            if not voice_id:
+                project_config_key = f"dias:project:{project_id}:config"
+                voice_id = self.redis.get_state(project_config_key, "voice_id")
+                if voice_id:
+                    self.logger.info(f"📍 Usando voice_id da Redis config: {voice_id}")
+
+            # E. Fallback Finale: Default del backend
+            if not voice_id:
+                voice_id = default_voice
+                self.logger.info(f"⚠️ Nessuna configurazione trovata, uso fallback: {voice_id}")
+            
+            # --- SPRINT 4: Theatrical Standard Resolution ---
+            theatrical_cfg = preprod_data.get("theatrical_standard", {})
+            theatrical_temp = theatrical_cfg.get("temperature", 0.7)
+            theatrical_subtemp = theatrical_cfg.get("subtalker_temperature", 0.75)
+            theatrical_instruct = theatrical_cfg.get("instruct", "Natural Narrative")
+            
+            # Parametri Qwen3/Fish
+            temp = message.get("temperature") or theatrical_temp or default_temp
+            subtemp = message.get("subtalker_temperature") or theatrical_subtemp or 0.75
             top_p = message.get("top_p") or default_top_p
             
+            # Instruct override (Priorità: Messaggio > Dossier > Default)
+            instruct = message.get("qwen3_instruct") or theatrical_instruct or default_instruct
+
             # Voice Safety Check (Prevent 'aura' hallucinations and ensure Qwen3 compatibility)
             if "qwen3" in target_model.lower():
-                valid_qwen3_voices = ["luca", "narratore"]
+                # We trust voice_id from preproduction or message
                 if voice_id.lower() == "aura":
                     self.logger.warning(f"Identificato voice_id 'aura'. Sostituisco col default '{default_voice}'.")
                     voice_id = default_voice
             
-            # New Standard: aria:q:local:tts:{model}:{client}
-            self.aria_tts_queue = f"aria:q:local:tts:{target_model}:dias"
+            # New Standard: aria:q:{type}:{provider}:{model}:{client}
+            self.aria_tts_queue = f"aria:q:tts:local:{target_model}:dias"
             
             aria_task = {
                 "job_id": unique_aria_job_id,
@@ -178,6 +234,9 @@ class StageDVoiceGeneratorProxy(BaseStage):
                     "voice_id": voice_id,
                     "instruct": instruct,
                     "temperature": temp,
+                    "subtalker_temperature": subtemp,
+                    # NOTE: ref_text and ref_audio_path are now resolved by ARIA on Windows 
+                    # based on the voice_id, keeping DIAS agnostic.
                     "top_p": top_p,
                     "output_format": "wav"
                 },
@@ -216,22 +275,24 @@ class StageDVoiceGeneratorProxy(BaseStage):
                 final_path_for_registry = final_url
 
             # === STEP 5: REGISTRAZIONE COMPLETAMENTO ===
-            self.tracker.mark_as_completed(book_id, unique_aria_job_id, final_path_for_registry)
-            entry = self.tracker.get_entry(book_id, unique_aria_job_id)
+            self.tracker.mark_as_completed(project_id, unique_aria_job_id, final_path_for_registry)
+            entry = self.tracker.get_entry(project_id, unique_aria_job_id)
             if entry:
                 entry.metadata["duration_seconds"] = duration
-                self.tracker.set_entry(book_id, entry)
+                self.tracker.set_entry(project_id, entry)
 
             message["voice_path"] = final_path_for_registry
             message["voice_duration_seconds"] = duration
             message["voice_status"] = "completed"
             
-            self.persistence.save_stage_output("d", message, clean_title, chunk_label, scene_id)
+            self.persistence.save_stage_output("d", message, project_id, scene_id=scene_id, include_timestamp=False)
             return message
             
         except Exception as e:
             self.logger.error(f"Errore nello Stage D Proxy: {e}", exc_info=True)
-            return None
+            raise e
+
+        return False
 
     def _download_file(self, url: str, dest_path: Path) -> bool:
         """

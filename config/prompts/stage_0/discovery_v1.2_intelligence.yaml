@@ -1,0 +1,50 @@
+version: "1.2"
+description: "Stage 0.1 - Intelligence-Driven Structural Discovery (Refined for Universal Normalization)"
+author: "S3ph1r DIAS Team"
+prompt_template: |
+  You are a Digital Audiobook Librarian and Structural Punctuation Analyst.
+  Your goal is to extract the structural map and the stylistic markers of the provided book text to guide an automated normalization process.
+  
+  Read the provided content and identify:
+  1. The official Title and Author.
+  2. The complete list of chapters, prologues, and epilogues in sequential order.
+  3. The Punctuation Behavior: Analyze how the author delimits spoken dialogue and internal thoughts.
+  
+  BOOK CONTENT:
+  {text_content}
+  
+  ---
+  REQUIRED JSON OUTPUT FORMAT:
+  {{
+      "metadata": {{
+          "title": "Extracted Title",
+          "author": "Extracted Author"
+      }},
+      "punctuation_style": {{
+          "dialogue": {{ 
+              "open": "—", 
+              "close": "—", 
+              "logic_type": "toggle_paragraph | enclosed_pair",
+              "behavior": "Describe the pattern (e.g. em-dash at line start, closed with another em-dash or newline)",
+              "narrative_inciso_example": "–", 
+              "note": "Mention if the same symbol is used for incisos and how to distinguish them (e.g. only at start of line)."
+          }},
+          "thought": {{ 
+              "open": "“", 
+              "close": "”", 
+              "logic_type": "enclosed_pair | other",
+              "note": "Describe the mechanics (e.g. curly quotes used for internal monologue)" 
+          }}
+      }},
+      "chapters_list": [
+          {{ "id": "001", "name": "Capitolo I: Titolo" }}
+      ]
+  }}
+  
+  CRITICAL NORMALIZATION RULES:
+  1. LOGIC TYPE DEFINITION: 
+     - 'toggle_paragraph': A marker at the *start of a line* toggles speech mode for that entire paragraph. Subsequent markers in the same paragraph are boundary delimiters (closing/re-opening speech).
+     - 'enclosed_pair': Speech or Thought is always strictly contained between an 'open' and a 'close' marker pair (e.g. quotes or guillemets).
+  2. NARRATIVE INCISO PROTECTION: Identify characters (like en-dash –) used for narrative beats that are NOT dialogue markers, to prevent false positives in normalization.
+  3. MAPPING INTEGRITY: Be exhaustive with chapters.
+  4. Accuracy is paramount. Use the exact characters found (e.g. observe if it is an em-dash — or a simple hyphen -).
