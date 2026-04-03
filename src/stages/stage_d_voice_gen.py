@@ -205,11 +205,15 @@ class StageDVoiceGeneratorProxy(BaseStage):
             theatrical_subtemp = theatrical_cfg.get("subtalker_temperature", 0.75)
             theatrical_instruct = theatrical_cfg.get("instruct", "Natural Narrative")
             
-            # Parametri Qwen3/Fish
+            # Parametri Qwen3/Fish - Override da Stage C Dynamic Tuning
+            # message.get("temperature") and message.get("subtalker_temperature")
+            # now correctly fetch dynamically tuned parameters.
             temp = message.get("temperature") or theatrical_temp or default_temp
             subtemp = message.get("subtalker_temperature") or theatrical_subtemp or 0.75
             top_p = message.get("top_p") or default_top_p
             
+            self.logger.info(f"Parametri audio: temp={temp}, subtemp={subtemp}, top_p={top_p}")
+
             # Instruct override (Priorità: Messaggio > Dossier > Default)
             instruct = message.get("qwen3_instruct") or theatrical_instruct or default_instruct
 

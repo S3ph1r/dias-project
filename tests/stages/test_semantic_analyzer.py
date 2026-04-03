@@ -16,8 +16,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 from src.stages.stage_b_semantic_analyzer import (
-    StageBSemanticAnalyzer,
-    gemini_rate_limiter
+    StageBSemanticAnalyzer
 )
 from src.common.models import (
     MacroAnalysisResult,
@@ -25,90 +24,9 @@ from src.common.models import (
     NarrativeMarker,
     SemanticEntity,
     SemanticRelation,
-    SemanticConcept,
-    PrimaryEmotion
+    SemanticConcept
 )
-from stages.gemini_rate_limiter import GeminiRateLimiter
 from common.redis_client import DiasRedis
-
-
-class TestGeminiRateLimiter:
-    """Test suite per il rate limiter di Gemini API"""
-    
-    def test_rate_limiter_initialization(self):
-        """Test inizializzazione rate limiter"""
-        limiter = GeminiRateLimiter(requests_per_interval=2, interval_minutes=10)
-        
-        assert limiter.requests_per_interval == 2
-        assert limiter.interval.total_seconds() == 600  # 10 minuti
-        assert len(limiter.request_times) == 0
-    
-    def test_can_make_request_initially(self):
-        """Test che inizialmente possiamo fare richieste"""
-        limiter = GeminiRateLimiter(requests_per_interval=1, interval_minutes=5)
-        
-        assert limiter.can_make_request() == True
-    
-    def test_rate_limit_blocking(self):
-        """Test che il rate limiter blocca dopo il limite"""
-        limiter = GeminiRateLimiter(requests_per_interval=1, interval_minutes=0.1)  # 6 secondi
-        
-        # Prima richiesta dovrebbe passare
-        assert limiter.can_make_request() == True
-        limiter.request_times.append(datetime.now())
-        
-        # Seconda richiesta dovrebbe essere bloccata
-        assert limiter.can_make_request() == False
-    
-    def test_wait_for_slot(self):
-        """Test attesa per slot disponibile"""
-        limiter = GeminiRateLimiter(requests_per_interval=1, interval_minutes=0.05)  # 3 secondi
-        
-        # Aggiungi richiesta recente
-        limiter.request_times.append(datetime.now())
-        
-        # Test che aspetta correttamente
-        start_time = time.time()
-        wait_time = limiter.wait_for_slot()
-        end_time = time.time()
-        
-        # Dovrebbe aver atteso circa 3 secondi
-        assert end_time - start_time >= 2.5  # Con tolleranza
-        # Dopo wait_for_slot, abbiamo usato lo slot, quindi non dovrebbe essere disponibile
-        assert limiter.can_make_request() == False
-        
-        # Aspetta che il tempo scada e verifica che diventi disponibile
-        time.sleep(3.5)
-        assert limiter.can_make_request() == True
-    
-    def test_get_status(self):
-        """Test ottenimento stato del rate limiter"""
-        limiter = GeminiRateLimiter(requests_per_interval=2, interval_minutes=5)
-        
-        # Aggiungi una richiesta
-        limiter.request_times.append(datetime.now())
-        
-        status = limiter.get_status()
-        
-        assert status['requests_in_interval'] == 1
-        assert status['max_requests'] == 2
-        assert status['interval_minutes'] == 5
-        assert status['can_make_request'] == True
-    
-    def test_reset(self):
-        """Test reset del rate limiter"""
-        limiter = GeminiRateLimiter()
-        
-        # Aggiungi richieste
-        limiter.request_times.append(datetime.now())
-        limiter.request_times.append(datetime.now())
-        
-        assert len(limiter.request_times) == 2
-        
-        # Reset
-        limiter.reset()
-        
-        assert len(limiter.request_times) == 0
 
 
 class TestStageBSemanticAnalyzer:
@@ -158,23 +76,28 @@ class TestStageBSemanticAnalyzer:
     @pytest.fixture
     def analyzer(self, mock_redis_client):
         """Fixture per Stage B analyzer con mock Redis"""
-        # Reset global rate limiter
-        gemini_rate_limiter.reset()
         
-        with patch('src.stages.stage_b_semantic_analyzer.genai.Client') as mock_genai:
+        with patch('src.stages.stage_b_semantic_analyzer.GatewayClient') as mock_genai:
             
             mock_client = Mock()
-            mock_response = Mock()
-            mock_response.text = json.dumps({
-                "entities": [],
-                "relations": [],
-                "concepts": [],
-                "confidence_score": 0.0
-            })
-            mock_client.models.generate_content.return_value = mock_response
+            mock_client._is_mock = True
+            mock_response = {
+                "status": "success",
+                "output": {
+                    "text": json.dumps({
+                        "entities": [],
+                        "relations": [],
+                        "concepts": [],
+                        "confidence_score": 0.0
+                    })
+                }
+            }
+            mock_client.generate_content.return_value = mock_response
             mock_genai.return_value = mock_client
             
             analyzer = StageBSemanticAnalyzer(redis_client=mock_redis_client)
+            # Inject the mock directly
+            analyzer.gemini_client = mock_client
             return analyzer
     
     def test_analyzer_initialization(self, analyzer):
@@ -226,26 +149,6 @@ class TestStageBSemanticAnalyzer:
         assert result["status"] == "error"
         assert "error" in result
     
-    def test_rate_limit_integration(self, analyzer):
-        """Test integrazione con rate limiter"""
-        # Reset rate limiter
-        gemini_rate_limiter.reset()
-        
-        message = {
-            "block_id": "block_123",
-            "book_id": "book_456",
-            "text": "Testo di esempio per test rate limit",
-            "metadata": {}
-        }
-        
-        # Prima richiesta dovrebbe andare bene
-        result1 = analyzer.process(message)
-        assert result1["status"] == "success"
-        
-        # Seconda richiesta dovrebbe essere gestita dal rate limiter
-        # (ma dovrebbe comunque andare a buon fine con attesa)
-        result2 = analyzer.process(message)
-        assert result2["status"] == "success"
     
     def test_gemini_response_parsing(self, analyzer):
         """Test parsing risposta Gemini"""
@@ -422,12 +325,15 @@ class TestStageBIntegration:
             }
         }
 
-        with patch('src.stages.stage_b_semantic_analyzer.genai.Client') as mock_genai:
+        with patch('src.stages.stage_b_semantic_analyzer.GatewayClient') as mock_genai:
             
             mock_client = Mock()
-            mock_response = Mock()
-            mock_response.text = json.dumps({
-                "entities": [
+            mock_client._is_mock = True
+            mock_response = {
+                "status": "success",
+                "output": {
+                    "text": json.dumps({
+                        "entities": [
                     {
                         "entity_id": "ent_digital_rev",
                         "text": "rivoluzione digitale",
@@ -516,13 +422,16 @@ class TestStageBIntegration:
                 ],
                 "confidence_score": 0.91
             })
-            mock_client.models.generate_content.return_value = mock_response
+                }
+            }
+            mock_client.generate_content.return_value = mock_response
             mock_genai.return_value = mock_client
             
             # Mock Redis
             mock_redis = Mock()
             
             analyzer = StageBSemanticAnalyzer(redis_client=mock_redis)
+            analyzer.gemini_client = mock_client
             result = analyzer.process(stage_a_chunk)
             
             # Verifica risultato

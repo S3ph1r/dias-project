@@ -35,7 +35,6 @@ from common.models import (
     VoiceDirection,
     MusicLayer,
     AudioLayers,
-    PrimaryEmotion,
 )
 from common.base_stage import BaseStage
 
@@ -244,10 +243,10 @@ class TestModels:
             valence=0.25,
             arousal=0.75,
             tension=0.90,
-            primary_emotion=PrimaryEmotion.SUSPENSE,
+            primary_emotion="suspense",
         )
         assert analysis.valence == 0.25
-        assert analysis.primary_emotion == PrimaryEmotion.SUSPENSE
+        assert analysis.primary_emotion == "suspense"
 
     def test_models_block_analysis_out_of_range(self):
         """Valori fuori range alzano ValidationError."""
@@ -256,7 +255,7 @@ class TestModels:
                 valence=1.5,  # Out of range!
                 arousal=0.5,
                 tension=0.5,
-                primary_emotion=PrimaryEmotion.NEUTRAL,
+                primary_emotion="neutro",
             )
 
     def test_models_scene_script(self):
@@ -320,7 +319,7 @@ class TestModels:
             avg_valence=0.25,
             avg_arousal=0.75,
             avg_tension=0.85,
-            dominant_emotion=PrimaryEmotion.SUSPENSE,
+            dominant_emotion="suspense",
             all_audio_cues=["pages_turning", "door_creak"],
             total_blocks=2,
         )

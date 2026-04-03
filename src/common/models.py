@@ -67,11 +67,13 @@ class NarrativeMarker(BaseModel):
 
 class BlockAnalysis(BaseModel):
     """Analisi emotiva di un singolo blocco testuale."""
-    valence: float = Field(ge=0.0, le=1.0)
-    arousal: float = Field(ge=0.0, le=1.0)
-    tension: float = Field(ge=0.0, le=1.0)
+    valence: float = Field(ge=0.0, le=1.0, default=0.5)
+    arousal: float = Field(ge=0.0, le=1.0, default=0.5)
+    tension: float = Field(ge=0.0, le=1.0, default=0.5)
     primary_emotion: str = "neutro"
     secondary_emotion: Optional[str] = None
+    subtext: Optional[str] = None
+    narrator_base_tone: Optional[str] = None
     setting: Optional[str] = None
     has_dialogue: bool = False
     audio_cues: List[str] = Field(default_factory=list)

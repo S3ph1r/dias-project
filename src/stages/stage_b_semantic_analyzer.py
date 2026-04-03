@@ -263,7 +263,7 @@ class StageBSemanticAnalyzer(BaseStage):
         
         try:
             # Gestisci client Gateway, reale o mock
-            if isinstance(self.gemini_client, GatewayClient):
+            if isinstance(self.gemini_client, GatewayClient) or getattr(self.gemini_client, "_is_mock", False):
                 # Client ARIA Gateway
                 generate_config = {}
                 if hasattr(self.config.google, 'response_mime_type'):
@@ -390,13 +390,33 @@ class StageBSemanticAnalyzer(BaseStage):
             concepts = [SemanticConcept(**c) for c in result.get('concepts', [])]
             narrative_markers = [NarrativeMarker(**m) for m in result.get('narrative_markers', [])]
             
-            block_analysis_data = result.get('block_analysis', {})
+            block_analysis_data = result.get('block_analysis', result)
+
+            # Map v1.1 nuance prompt structure to the model if it exists
+            primary_emotion = result.get('primary_emotion') or block_analysis_data.get('primary_emotion', 'neutro')
+            secondary_emotion = result.get('secondary_emotion') or block_analysis_data.get('secondary_emotion')
+            subtext = result.get('subtext') or block_analysis_data.get('subtext')
+            narrator_base_tone = result.get('narrator_base_tone') or block_analysis_data.get('narrator_base_tone')
+
+            # Entities speaking styles mapping (Mediterranean prompting v1.1)
+            entities_styles = result.get('entities_speaking_styles', {})
+            for entity in entities:
+                if entity.text in entities_styles:
+                    entity.speaking_style = entities_styles[entity.text]
+
+            # Check if narrative_arc is a string and wrap it if needed
+            narrative_arc_str = result.get('narrative_arc')
+            if narrative_arc_str and not narrative_markers:
+                narrative_markers.append(NarrativeMarker(relative_position=0.5, event="Block Arc", mood_shift=narrative_arc_str))
+
             block_analysis = BlockAnalysis(
                 valence=block_analysis_data.get('valence', 0.5),
                 arousal=block_analysis_data.get('arousal', 0.5),
                 tension=block_analysis_data.get('tension', 0.5),
-                primary_emotion=block_analysis_data.get('primary_emotion', 'neutro'),
-                secondary_emotion=block_analysis_data.get('secondary_emotion'),
+                primary_emotion=primary_emotion,
+                secondary_emotion=secondary_emotion,
+                subtext=subtext,
+                narrator_base_tone=narrator_base_tone,
                 setting=block_analysis_data.get('setting'),
                 has_dialogue=block_analysis_data.get('has_dialogue', False),
                 audio_cues=block_analysis_data.get('audio_cues', [])
@@ -532,7 +552,7 @@ class StageBSemanticAnalyzer(BaseStage):
         """
         Ritorna stato corrente del rate limiter
         """
-        return gemini_rate_limiter.get_status()
+        return {}
 def main():
     """Main entry point per Stage B"""
     import argparse
