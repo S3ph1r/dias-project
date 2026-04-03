@@ -144,22 +144,20 @@ class TextDirector:
         block_analysis = (macro_analysis or {}).get("block_analysis", {})
         secondary_emotion = block_analysis.get("secondary_emotion", "")
 
-        # narrator_base_tone: Usa quello fornito dallo Stage B se presente, altrimenti fallback
-        narrator_base_tone = block_analysis.get("narrator_base_tone")
-        if not narrator_base_tone:
-            narrator_base_tone_map = {
-                "tensione":       "Low, unhurried chest voice. The narrator speaks with exhausted clarity — detached but not cold, like someone describing a world they know too well.",
-                "tristezza":      "Soft, low chest voice. Measured pace with slight weight on stressed syllables. No warmth — intimate but restrained.",
-                "gioia":          "Lighter chest voice, moderate pace. Slightly open mouth quality. Conversational but controlled.",
-                "paura":          "Hushed, tight chest voice. Short breath. Words clipped at the edges. Very slow.",
-                "rabbia":         "Clipped, low voice. Hard consonants. Fast but deliberate. Jaw barely moving.",
-                "curiosità":      "Slightly rising intonation at end of phrases. Mid-chest register. Moderate pace.",
-                "determinazione": "Chest voice, firm and forward. Consistent pace without hesitation. No emotional colour.",
-            }
-            narrator_base_tone = narrator_base_tone_map.get(
-                emotion.lower(),
-                "Low, unhurried chest voice. Measured and detached."
-            )
+        # narrator_base_tone: derivato dalla primary_emotion e secondary_emotion
+        narrator_base_tone_map = {
+            "tensione":       "Low, unhurried chest voice. The narrator speaks with exhausted clarity — detached but not cold, like someone describing a world they know too well.",
+            "tristezza":      "Soft, low chest voice. Measured pace with slight weight on stressed syllables. No warmth — intimate but restrained.",
+            "gioia":          "Lighter chest voice, moderate pace. Slightly open mouth quality. Conversational but controlled.",
+            "paura":          "Hushed, tight chest voice. Short breath. Words clipped at the edges. Very slow.",
+            "rabbia":         "Clipped, low voice. Hard consonants. Fast but deliberate. Jaw barely moving.",
+            "curiosità":      "Slightly rising intonation at end of phrases. Mid-chest register. Moderate pace.",
+            "determinazione": "Chest voice, firm and forward. Consistent pace without hesitation. No emotional colour.",
+        }
+        narrator_base_tone = narrator_base_tone_map.get(
+            emotion.lower(),
+            "Low, unhurried chest voice. Measured and detached."
+        )
 
         # narrative_arc: formattato come lista leggibile da Gemini
         narrative_markers = (macro_analysis or {}).get("narrative_markers", [])
@@ -173,11 +171,6 @@ class TextDirector:
             narrative_arc = "\n".join(arc_lines)
         else:
             narrative_arc = f"  - Whole block: {emotion_description}"
-
-        # subtext injection if available
-        subtext = block_analysis.get("subtext", "")
-        if subtext:
-            narrative_arc += f"\n  - Subtext/Intent: {subtext}"
 
         # entities_speaking_styles: formattato per Gemini
         entities = (macro_analysis or {}).get("entities", [])
@@ -377,7 +370,8 @@ class TextDirector:
 
     def _apply_phonetic_normalization(self, text: str) -> str:
         """
-        Applica normalizzazione fonetica robusta: conversione numeri e parole ambigue.
+        Applica normalizzazione fonetica robusta: converte solo numeri in lettere usando num2words.
+        Evita dizionari fissi come richiesto.
         """
         # Convert numbers to words in Italian
         def replace_number(match):
@@ -388,21 +382,6 @@ class TextDirector:
                 return num_str
 
         text = re.sub(r'\b\d+\b', replace_number, text)
-
-        # Dictionary-based replacement for common ambiguous words
-        replacements = {
-            r'\bpatina\b': 'pàtina',
-            r'\bPatina\b': 'Pàtina',
-            r'\bfuton\b': 'futòn',
-            r'\bFuton\b': 'Futòn',
-            r'\bsubito\b': 'sùbito',
-            r'\bSubito\b': 'Sùbito',
-            # Add more as needed based on common TTS errors
-        }
-
-        for pattern, replacement in replacements.items():
-            text = re.sub(pattern, replacement, text)
-
         return text
 
 
@@ -666,19 +645,6 @@ class SceneDirector(BaseStage):
 
         # Genera voice direction (tecnica)
         voice_direction = self._generate_voice_direction(mock_scene, macro_analysis)
-        
-        # Dynamic Parameter Tuning per Qwen3 in base a voice_direction/energia
-        base_temp = 0.7
-        base_subtemp = 0.75
-        energy = voice_direction.get("energy", 0.5)
-
-        # Aggiusta la temperatura in base all'energia
-        if energy > 0.7:  # Alta tensione/gioia
-            base_temp = min(0.8, base_temp + (energy - 0.7) * 0.5)
-            base_subtemp = min(0.85, base_subtemp + (energy - 0.7) * 0.5)
-        elif energy < 0.4:  # Tristezza/Calma
-            base_temp = max(0.6, base_temp - (0.4 - energy) * 0.5)
-            base_subtemp = max(0.65, base_subtemp - (0.4 - energy) * 0.5)
 
         # Genera audio layers (musica e ambiente basati sull'emozione)
         audio_layers = self._generate_audio_layers(mock_scene, macro_analysis)
@@ -702,8 +668,6 @@ class SceneDirector(BaseStage):
             "pause_after_ms": dynamic_scene.get("pause_after_ms", 200),
             "has_dialogue": dynamic_scene.get("has_dialogue", False),
             "tts_backend": "qwen3-tts-1.7b",
-            "temperature": round(base_temp, 3),
-            "subtalker_temperature": round(base_subtemp, 3),
             "primary_emotion": primary_emotion,
             "word_count": word_count,
             "voice_direction": voice_direction,
