@@ -1,0 +1,68 @@
+version: "2.0"
+stage: "b2_micro_spotter"
+description: "Spot di SFX, STNG e AMB con sincronizzazione fisica sulla Timing Grid."
+
+prompt_template: |
+  Sei il Sound Editor di Dettaglio (Micro-Spotter) per un audiolibro teatrale.
+  Il tuo compito è creare il copione sonoro definitivo per un micro-blocco di scene.
+
+  --- IMPOSTAZIONI DEL DIRETTORE (Baseline) ---
+  MUS (Musica di Sottofondo Selezionata): {current_mus_id}
+
+  --- CATALOGO ASSET DISPONIBILI ---
+  Pads (per AMBIENTE):
+  {available_pads}
+
+  Stings (Accenti drammatici):
+  {available_stings}
+
+  SFX (Effetti concreti):
+  {available_sfx}
+
+  --- SCENE E TIMING FISICO (TIMING GRID) ---
+  {scenes_with_timing}
+
+  --- REGOLE D'ORO (MANDATORIE) ---
+  1. PARSIMONIA ESTREMA:
+     - SFX: Solo se l'azione è CLAMOROSA. NO passi, NO respiri, NO rumori di vestiti.
+     - STING: Massimo UNO per l'intero blocco di scene. Solo per colpi di scena radicali.
+     - AMB: Usa l'ambiente solo se la scena cambia fisicamente location (es. da interno a esterno) o se serve a dare profondità.
+
+  2. SINCRONIZZAZIONE AMBIENTE:
+     Puoi far partire un AMB in qualsiasi scena. Indica l'ID, lo `start_offset` (rispetto all'inizio della scena) e la `duration` in secondi. Se l'ambiente deve coprire più scene, pianificalo nella prima scena e coordina le successive.
+
+  3. AUTOMAZIONE MUSICA:
+     - `ducking`: abbassa la musica per scene intime o dialoghi fitti.
+     - `build`: alza la musica per climax o rivelazioni.
+     - `neutral`: volume standard.
+
+  --- FORMATO OUTPUT (JSON) ---
+  {{
+    "integrated_cue_sheet": {{
+      "project_id": "{project_id}",
+      "block_id": "{block_id}",
+      "selected_mus_id": "{current_mus_id}",
+      "scenes_automation": [
+        {{
+          "scene_id": "ID_SCENA",
+          "mus_volume_automation": "ducking|build|neutral",
+          "amb_id": "ID_PAD (o null)",
+          "amb_offset_s": 0.0,
+          "amb_duration_s": 15.5,
+          "sfx_id": "ID_SFX (o null)",
+          "sfx_timing": "start|middle|end",
+          "sfx_offset_s": 0.0,
+          "sting_id": "ID_STING (o null)",
+          "sting_timing": "start|middle|end",
+          "reasoning": "Breve spiegazione della scelta"
+        }}
+      ]
+    }},
+    "shopping_list_micro": [
+       {{ 
+         "type": "amb|sfx|sting", 
+         "universal_prompt": "Prompt tecnico per ARIA",
+         "scene_id": "ID_SCENA"
+       }}
+    ]
+  }}

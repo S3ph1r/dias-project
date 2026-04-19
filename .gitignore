@@ -65,3 +65,7 @@ src/dashboard/build/
 src/dashboard/dist/
 .env.*
 !.env.template
+
+# Produzione Pipeline
+stages/**/output/
+stages/**/assets/

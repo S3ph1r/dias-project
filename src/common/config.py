@@ -54,7 +54,7 @@ class ModelsConfig(BaseModel):
 
 
 class RedisConfig(BaseModel):
-    host: str = "192.168.1.120"
+    host: str = "127.0.0.1"
     port: int = 6379
     db: int = 0
     decode_responses: bool = True
@@ -68,6 +68,7 @@ class QueuesConfig(BaseModel):
     semantic: str = "dias:q:2:semantic"
     regia: str = "dias:q:3:regia"
     voice: str = "dias:q:4:voice"
+    spotter: str = "dias:q:4b:spotter"
     music: str = "dias:q:5:music"
     mixing: str = "dias:q:6:mixing"
     mastering: str = "dias:q:7:mastering"

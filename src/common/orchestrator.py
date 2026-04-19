@@ -37,6 +37,7 @@ class SerialOrchestrator:
             {"id": "stage_b", "name": "Semantic Analyzer", "script": "src/stages/stage_b_semantic_analyzer.py", "queue": self.config.queues.ingestion},
             {"id": "stage_c", "name": "Scene Director", "script": "src/stages/stage_c_scene_director.py", "queue": self.config.queues.semantic},
             {"id": "stage_d", "name": "Voice Generator", "script": "src/stages/stage_d_voice_gen.py", "queue": self.config.queues.voice},
+            {"id": "stage_b2", "name": "Sound Spotter", "script": "src/stages/stage_b2_spotter.py", "queue": self.config.queues.spotter},
         ]
         
         self.base_dir = Path(__file__).resolve().parent.parent.parent
@@ -84,6 +85,12 @@ class SerialOrchestrator:
             files = list(target_path.glob("*.wav"))
             valid_files = [f for f in files if f.stat().st_size > 1000 and self.project_id in f.name]
             return len(valid_files)
+        
+        # Per Stage B2 (Spotter) contiamo i cue-sheet
+        if stage_id == "stage_b2":
+            files = list(target_path.glob("*-cue-sheet.json"))
+            files = [f for f in files if self.project_id in f.name]
+            return len(files)
         
         # Per Stage B
         files = list(target_path.glob("*-chunk-*.json"))
@@ -137,7 +144,7 @@ class SerialOrchestrator:
             return
 
         # Identifica sorgente (indirizzo precedente)
-        source_map = {"stage_b": "stage_a", "stage_c": "stage_b", "stage_d": "stage_c"}
+        source_map = {"stage_b": "stage_a", "stage_c": "stage_b", "stage_d": "stage_c", "stage_b2": "stage_c"}
         source_stage = source_map.get(stage_id)
         if not source_stage: return
         
@@ -235,6 +242,33 @@ class SerialOrchestrator:
                                 
                             self.redis.push_to_queue(queue_name, data)
                             count += 1
+
+        # --- LOGICA STAGE B2 (Spotter) ---
+        elif stage_id == "stage_b2":
+            # B2 opera sui Master JSON dello Stage C
+            master_files = list(source_path.glob(f"*-chunk-*-micro-*-scenes*.json"))
+            
+            for mf in sorted(master_files):
+                if self.project_id not in mf.name:
+                    continue
+                
+                label_match = re.search(r"(chunk-\d{3}-micro-\d{3})", mf.name)
+                if not label_match: continue
+                full_label = label_match.group(1)
+                
+                # Verifica se esiste già il cue-sheet in target
+                cue_sheets = list(target_path.glob(f"{self.project_id}-{full_label}-cue-sheet.json"))
+                
+                if not cue_sheets:
+                    # Carica i dati minimi per il messaggio B2
+                    message = {
+                        "project_id": self.project_id,
+                        "chunk_label": full_label,
+                        "job_id": f"b2-job-{self.project_id}-{full_label}",
+                        "timestamp": datetime.datetime.now().isoformat()
+                    }
+                    self.redis.push_to_queue(queue_name, message)
+                    count += 1
 
         # --- LOGICA STANDARD (Stage B o Generica) ---
         else:

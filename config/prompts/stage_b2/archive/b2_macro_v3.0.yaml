@@ -1,0 +1,72 @@
+version: "3.1"
+stage: "b2_macro_spotter"
+description: "Direttore Musicale. Seleziona il Pad Musicale (PAD) basandosi sulla Palette di Preproduzione."
+
+prompt_template: |
+  Sei il Direttore Musicale (Macro-Spotter) per un audiolibro teatrale di qualità cinematografica.
+  Il tuo compito è selezionare il Pad Musicale Portante (PAD) per un Macro-chunk (Capitolo).
+
+  ════════════════════════════════════════════════════════════
+  SEZIONE A — LINEA EDITORIALE E PALETTE (Da Stage 0)
+  ════════════════════════════════════════════════════════════
+  
+  PALETTE ARTISTICA SELEZIONATA: 
+  {chosen_palette}
+
+  PROPOSTE DELLA PALETTE (Usa queste come riferimento stilistico):
+  {palette_proposals}
+
+  VALORI DEL PROGETTO: {fingerprint_values}
+
+  ════════════════════════════════════════════════════════════
+  SEZIONE B — CONTESTO NARRATIVO (Da Stage B)
+  ════════════════════════════════════════════════════════════
+  
+  EMOZIONE PRIMARIA: {primary_emotion}
+  SETTING: {setting}
+  DESCRIZIONE: {summary}
+
+  ════════════════════════════════════════════════════════════
+  SEZIONE C — CATALOGO ASSET ARIA (PAD)
+  ════════════════════════════════════════════════════════════
+  
+  Asset disponibili nel catalogo (Pads):
+  {available_mus}
+
+  ════════════════════════════════════════════════════════════
+  SEZIONE D — REGOLE DECISIONALI
+  ════════════════════════════════════════════════════════════
+
+  1. COERENZA STILISTICA: Il pad scelto DEVE suonare come la Palette selezionata.
+  2. COERENZA EMOTIVA: Deve supportare l'emozione primaria del capitolo.
+  3. REGOLA DEL LEITMOTIF: Se non ci sono cambiamenti drastici di setting o emozione rispetto 
+     ai capitoli precedenti dell'opera, preferisci mantenere lo stesso pad per creare continuità.
+  
+  SE NESSUN ASSET CORRISPONDE:
+  Se gli asset in catalogo non rispettano la Palette o l'emozione, imposta `selected_pad_id = null`
+  e compila la shopping list con un prompt FISICO (non narrativo) coerente con la palette.
+
+  ════════════════════════════════════════════════════════════
+  SEZIONE E — FORMATO OUTPUT (JSON)
+  ════════════════════════════════════════════════════════════
+
+  REGOLE PER IL CANONICAL_ID:
+  - Deve essere SEMANTICO e UNIVERSALE (es: pad_distopia_analogica, pad_tensione_orchestrale).
+  - Deve iniziare con il prefisso della categoria (pad_).
+  - Deve essere riciclabile in altri progetti cinematografici.
+
+  Rispondi SOLO con il JSON seguente:
+
+  {{
+    "project_id": "{project_id}",
+    "chunk_label": "{chunk_label}",
+    "selected_pad_id": "ID_ASSET (o null)",
+    "music_justification": "Spiegazione della scelta basata sulla palette e sull'emozione",
+    "shopping_list_macro": [
+      {{
+        "type": "pad",
+        "canonical_id": "pad_{{descrizione_fisica_breve}}",
+        "production_prompt": "Descrizione FISICA professionale per ARIA. Strumentazione, tono, frequenze, stilema della palette. ZERO riferimenti narrativi."
+      }}
+    ]
+  }}

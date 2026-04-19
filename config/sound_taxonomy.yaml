@@ -1,0 +1,164 @@
+# DIAS Sound Taxonomy v1.0
+# Tassonomia universale di categorie fisiche per asset sonori.
+# canonical_id format: {classe}_{sottoclasse}_{variante}
+# Usato da: B2-Micro (prompt), ARIA Registry (etichettatura), Stage E (matchin)
+
+version: "1.0"
+
+categories:
+
+  # ─── AMBIENTI CHIUSI ────────────────────────────────────────────────────────
+  AMB_ENCLOSED:
+    amb_enclosed_spaceship:
+      description: "Interior spaceship hum. Low-frequency engine drone, filtered air circulation, metallic resonance. Constant, non-intrusive."
+      tags: ["spaceship", "sci-fi", "interior", "mechanical", "low-freq"]
+
+    amb_enclosed_cave:
+      description: "Cave or underground space. Deep echo, occasional water drips, heavy silence, natural reverb."
+      tags: ["cave", "underground", "nature", "echo", "drips"]
+
+    amb_enclosed_bunker:
+      description: "Concrete bunker or military facility. Metallic resonance, distant ventilation, oppressive silence."
+      tags: ["bunker", "military", "concrete", "claustrophobic"]
+
+    amb_enclosed_lab:
+      description: "Scientific laboratory. Electronics hum, intermittent beeps, controlled air conditioning, sterile feel."
+      tags: ["lab", "science", "electronics", "beeps", "ventilation"]
+
+    amb_enclosed_vessel:
+      description: "Wooden or maritime vessel. Creaking wood under pressure, water movement, structural sounds."
+      tags: ["ship", "wood", "water", "creaking", "maritime"]
+
+    amb_enclosed_prison:
+      description: "Detention facility. Distant metal doors, echo, oppressive silence, occasional distant voices."
+      tags: ["prison", "detention", "echo", "metal", "oppressive"]
+
+  # ─── AMBIENTI APERTI ────────────────────────────────────────────────────────
+  AMB_OPEN:
+    amb_open_space_void:
+      description: "Deep space. Near-absolute silence. Faint cosmic hiss, sub-bass infrasound. Desolate."
+      tags: ["space", "silence", "cosmic", "void", "sci-fi"]
+
+    amb_open_forest:
+      description: "Natural forest. Wind in leaves, distant bird calls, organic ground movement."
+      tags: ["forest", "nature", "wind", "birds", "organic"]
+
+    amb_open_city_day:
+      description: "Urban environment, daytime. Diffuse traffic, distant voices, occasional horn, alive."
+      tags: ["city", "urban", "traffic", "day", "crowd"]
+
+    amb_open_city_night:
+      description: "Urban environment, nighttime. Reduced traffic, distant sirens, heavy silence."
+      tags: ["city", "urban", "night", "sirens", "quiet"]
+
+    amb_open_desert:
+      description: "Desert or arid landscape. Dry wind, thermal silence, nothing organic."
+      tags: ["desert", "wind", "arid", "empty", "hot"]
+
+    amb_open_alien:
+      description: "Non-terrestrial environment. Unfamiliar textures, unusual resonances, sensorially distinct atmosphere."
+      tags: ["alien", "sci-fi", "unknown", "surreal", "atmospheric"]
+
+    amb_open_ocean:
+      description: "Open sea or large body of water. Waves, wind, depth, vastness."
+      tags: ["ocean", "sea", "waves", "wind", "nature"]
+
+  # ─── SFX: IMPATTI FISICI ────────────────────────────────────────────────────
+  SFX_IMPACT:
+    sfx_impact_glass_hard:
+      description: "Glass shattering on hard surface. Single impact. High-freq crack 2-4kHz + debris scatter. Duration 0.5-1s. Dry."
+      tags: ["glass", "break", "shatter", "high-freq", "impact"]
+
+    sfx_impact_glass_soft:
+      description: "Glass breaking on soft surface. Muffled impact, less scatter. Duration 0.5s."
+      tags: ["glass", "break", "soft", "muffled"]
+
+    sfx_impact_metal_heavy:
+      description: "Heavy metal object impact. Solid thud + metallic resonance 1-3s. Weight is perceptible."
+      tags: ["metal", "heavy", "impact", "resonance", "industrial"]
+
+    sfx_impact_metal_light:
+      description: "Light metallic object. Tink or clink. Short, high-pitched. Duration 0.2-0.5s."
+      tags: ["metal", "light", "tink", "small"]
+
+    sfx_impact_body_fall:
+      description: "Human body falling on hard surface. Organic thud, no rebound. Duration 0.5s."
+      tags: ["body", "fall", "human", "impact", "thud"]
+
+    sfx_impact_explosion_near:
+      description: "Close-range explosion. Immediate bass impact + pressure wave. Duration 2-4s with rumble tail."
+      tags: ["explosion", "near", "bass", "impact", "pressure"]
+
+    sfx_impact_explosion_far:
+      description: "Distant explosion. Delayed low rumble, atmospheric. Duration 3-6s. Diffuse."
+      tags: ["explosion", "far", "rumble", "distant", "atmospheric"]
+
+    sfx_impact_shatter_large:
+      description: "Large structure breaking apart. Prolonged collapse, varied debris. Duration 3-8s."
+      tags: ["collapse", "shatter", "large", "structure", "prolonged"]
+
+  # ─── SFX: MECCANISMI ────────────────────────────────────────────────────────
+  SFX_MECHANICAL:
+    sfx_mechanical_door_heavy:
+      description: "Heavy door or airlock. Slow opening movement, metal hinges, solid closing thud."
+      tags: ["door", "heavy", "metal", "airlock", "mechanical"]
+
+    sfx_mechanical_door_light:
+      description: "Light door. Squeak, light wood or hinge, soft close."
+      tags: ["door", "light", "squeak", "wood", "soft"]
+
+    sfx_mechanical_weapon_fire:
+      description: "Single gunshot. Immediate impact, no tail. Caliber-agnostic."
+      tags: ["weapon", "gun", "shot", "fire", "impact"]
+
+    sfx_mechanical_weapon_reload:
+      description: "Weapon reloading. Metallic mechanical sound, click, slide."
+      tags: ["weapon", "reload", "mechanical", "click", "metal"]
+
+    sfx_mechanical_engine_start:
+      description: "Engine or propulsion system starting. From zero to operating RPM. Duration 3-6s."
+      tags: ["engine", "start", "propulsion", "turbine", "mechanical"]
+
+    sfx_mechanical_alarm:
+      description: "Electronic alarm. Repetitive, urgent, piercing. Continuous or pulsed."
+      tags: ["alarm", "electronic", "urgent", "repetitive"]
+
+    sfx_mechanical_console:
+      description: "Control panel interaction. Clicks, beeps, tactile response. Short."
+      tags: ["console", "panel", "beep", "click", "electronic"]
+
+  # ─── SFX: BIOLOGICI ─────────────────────────────────────────────────────────
+  SFX_BIOLOGICAL:
+    sfx_bio_creature_large:
+      description: "Large creature movement. Body weight, displacement, organic. Not a vocalization."
+      tags: ["creature", "large", "movement", "organic", "weight"]
+
+    sfx_bio_creature_swarm:
+      description: "Swarm or mass of creatures. Collective buzzing or movement. Dense, overwhelming."
+      tags: ["swarm", "mass", "buzz", "collective", "insects"]
+
+    sfx_bio_creature_vocal:
+      description: "Non-human creature vocalization. Alien, animal, ambiguous. Not speech."
+      tags: ["creature", "vocal", "alien", "animal", "roar"]
+
+  # ─── STINGS: ACCENTI DRAMMATICI ─────────────────────────────────────────────
+  STING:
+    sting_tension_low:
+      description: "Low tension build. Deep strings, slow dissonance, 3-6s. Sense of approaching danger."
+      tags: ["tension", "low", "strings", "dissonance", "slow"]
+
+    sting_tension_high:
+      description: "High-impact tension hit. Full orchestra, instant impact, no anticipation. 1-2s."
+      tags: ["tension", "high", "impact", "orchestra", "sudden"]
+
+    sting_reveal_shock:
+      description: "Shocking revelation. Short, sharp, high-pitched. Instant impact + brief decay. 0.5-1s."
+      tags: ["reveal", "shock", "sharp", "sudden", "discovery"]
+
+    sting_reveal_mystery:
+      description: "Mysterious revelation. Slow unfolding harmony, ambiguous tonality, 3-5s. Unsettling discovery."
+      tags: ["reveal", "mystery", "ambiguous", "slow", "eerie"]
+
+    sting_release:
+      description: "Resolution or relief. Tension dissolving, consonant. 3-6s. Emotional release."
+      tags: ["release", "resolution", "relief", "consonant", "calm"]

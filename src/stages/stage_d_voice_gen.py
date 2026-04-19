@@ -97,7 +97,7 @@ class StageDVoiceGeneratorProxy(BaseStage):
                 return message
 
             # === STEP 2: CHECK REMOTO (ARIA PC 139) ===
-            aria_host = os.getenv("ARIA_HOST", "192.168.1.139")
+            aria_host = os.getenv("ARIA_HOST", "127.0.0.1")
             aria_asset_port = os.getenv("ARIA_ASSET_PORT", "8082")
             expected_url = f"http://{aria_host}:{aria_asset_port}/{unique_aria_job_id}.wav"
             

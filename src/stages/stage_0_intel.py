@@ -52,7 +52,7 @@ class Stage0Intelligence(BaseStage):
     def _run_discovery(self, project_id: str, text_content: str) -> Optional[Dict[str, Any]]:
         """Step 0.1: Discover book structure and structural punctuation mechanics."""
         self.logger.info(f"Step 0.1: Starting Structural Discovery for {project_id}...")
-        discovery_prompt_path = "config/prompts/stage_0/discovery_v1.2_intelligence.yaml"
+        discovery_prompt_path = "config/prompts/stage_0/0.1_discovery_v1.2.yaml"
         discovery_prompt_data = self._load_prompt(discovery_prompt_path)
         template = discovery_prompt_data.get('prompt_template', '')
         
@@ -169,7 +169,7 @@ class Stage0Intelligence(BaseStage):
                 text_content = source_text
 
             self.logger.info(f"🧠 Step 0.2: Starting Intelligence Analysis (Casting) for {project_id}...")
-            intel_prompt_data = self._load_prompt("config/prompts/stage_0/intelligence.yaml")
+            intel_prompt_data = self._load_prompt("config/prompts/stage_0/0.2_intelligence_v1.0.yaml")
             template = intel_prompt_data.get('prompt_template', '')
             
             # Extract chapters from Step 1 for the prompt context

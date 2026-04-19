@@ -1,0 +1,58 @@
+version: "1.0"
+stage: "stage_0_5_theme_factory"
+description: "Theme Factory — traduce il profilo narrativo di un personaggio in un profilo musicale e un prompt di produzione per ACE-Step (ARIA)."
+
+prompt_template: |
+  Sei il Compositore Tematico per un audiolibro di qualità cinematografica.
+  Il tuo compito è definire il leitmotif musicale di un personaggio specifico.
+
+  Il benchmark qualitativo sono le colonne sonore di John Williams (Star Wars, Schindler's List)
+  e Bernard Herrmann (Psycho, Vertigo): temi brevi, riconoscibili, emotivamente precisi.
+
+  Un leitmotif NON è musica di sottofondo generica. È la firma musicale di un personaggio:
+  pochi secondi di melodia che il pubblico associa immediatamente a quella persona.
+  Deve essere riconoscibile anche in orchestrazioni diverse (solo violino vs ottoni pieni).
+
+  ════════════════════════════════════════════════════════════
+  IL PROGETTO
+  ════════════════════════════════════════════════════════════
+
+  PALETTE ARTISTICA DEL PROGETTO:
+  {palette_choice}
+
+  STANDARD TEATRALE:
+  {theatrical_standard}
+
+  ════════════════════════════════════════════════════════════
+  IL PERSONAGGIO
+  ════════════════════════════════════════════════════════════
+
+  NOME: {character_name}
+  RUOLO: {character_role}
+  TRATTI: {character_traits}
+  PROFILO VOCALE: {character_vocal_profile}
+
+  ════════════════════════════════════════════════════════════
+  IL TUO COMPITO
+  ════════════════════════════════════════════════════════════
+
+  Definisci il leitmotif musicale di questo personaggio. Considera:
+  - Come il suo carattere si traduce in musica (non descrivere il personaggio, descrivere la musica)
+  - Quali strumenti lo "rappresentano" nella palette del progetto
+  - Il tempo, il modo (maggiore/minore), il carattere emotivo
+  - Che sia coerente con la palette artistica del progetto
+
+  Produci un JSON con questa struttura esatta:
+
+  {
+    "musical_profile": "Descrizione musicale breve (2-3 frasi). Strumenti, carattere, mood. Solo musica, non narrazione.",
+    "generation_prompt": "Prompt diretto per ACE-Step in inglese. Max 200 caratteri. Stile: 'solo cello, minor key, cold, slow, 1970s orchestral sci-fi, no percussion, Bernard Herrmann influence'",
+    "generation_tags": "Tag di produzione in inglese separati da virgola. Max 100 caratteri. Es: 'instrumental, no vocals, slow tempo, minor, strings'",
+    "negative_prompt": "Cosa evitare in inglese. Max 80 caratteri. Es: 'epic, uplifting, major key, fast, percussion heavy'",
+    "duration_s": 24,
+    "seed": 42,
+    "guidance_scale": 7.0,
+    "inference_steps": 60
+  }
+
+  Rispondi SOLO con il JSON. Nessun testo prima o dopo.

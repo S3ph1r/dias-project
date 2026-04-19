@@ -126,7 +126,7 @@ class TextDirector:
         import yaml
         
         # Caricamento del nuovo prompt esternalizzato
-        prompt_path = getattr(self.config, "stage_c_prompt_path", "config/prompts/stage_c/v1.4_contextual.yaml")
+        prompt_path = getattr(self.config, "stage_c_prompt_path", "config/prompts/stage_c/c_monastic_v2.3.yaml")
         prompt_full_path = Path(__file__).parent.parent.parent / prompt_path
         
         try:

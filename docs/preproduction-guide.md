@@ -1,4 +1,4 @@
-# 🎬 DIAS Pre-production & Project Architecture
+# DIAS Pre-production & Project Architecture
 
 Questo documento descrive la struttura a progetto di DIAS e il funzionamento della fase di **Intelligence (Stage 0)** e della **Dashboard di Regia**.
 
@@ -18,20 +18,26 @@ A partire dal 2026, DIAS utilizza una struttura isolata per ogni progetto (libro
 
 ---
 
-## 🧠 Stage 0: Intelligence Analysis
-Lo Stage 0 è il "Cervello" preventivo che analizza il libro prima che inizi la produzione di massa.
+## 🧠 Stage 0: Intelligence Analysis (Protocollo 0.1/0.2)
+Lo Stage 0 è il "Cervello" preventivo che opera tramite un protocollo a due chiamate LLM (Gemini 1.5 Flash-Lite) per mappare il libro. Tutti i prompt sono gestiti su **DIAS (LXC 190)** e versionati in `dias-inventory.md`.
 
-### Documenti Chiave
-1.  **`fingerprint.json`** (Sola Lettura - Prodotto dall'IA):
-    *   **Chapter Map**: Mappatura di tutti i capitoli con titoli e parole chiave.
-    *   **Character Dossier**: Estrazione di tutti i personaggi con profilo vocale e tratti.
-    *   **Sound Design Palette**: 3 proposte stilistiche per l'atmosfera.
-2.  **`preproduction.json`** (Scrittura - Prodotto dal Regista):
-    *   **casting**: Mappa Nome Personaggio -> Voice ID (es. `Kaelen -> luca`).
-    *   **global_voice**: Il Voice ID selezionato come narratore master.
-    *   **soundtrack**: Lo stile musicale o il brano selezionato.
+### 🦿 Stage 0.1: Discovery (La Scansione Ossea)
+*   **Obiettivo**: Identificare i confini fisici del libro e lo stile di punteggiatura dell'autore.
+*   **Azione**: Gemini analizza il testo per estrarre la mappa dei capitoli e le regole di dialogo (es. trattini vs virgolette).
+*   **Output: `fingerprint.json`**:
+    *   **Chapter Map**: ID e nomi dei capitoli essenziali per lo Stage A.
+    *   **Stylistic Markers**: Regole per il `SourceNormalizer` (vedi [Production Standard](./production-standard.md)).
 
-3.  **Future Proofing (Long Books - v6.8)**: **Sequential Contextual Injection**
+### 🎭 Stage 0.2: Intelligence (L'Anima del Libro)
+*   **Obiettivo**: Estrarre il potenziale artistico e proporre un casting.
+*   **Azione**: Gemini riceve la struttura consolidata dallo 0.1 e analizza i contenuti per creare i profili dei personaggi.
+*   **Output: `preproduction.json`**:
+    *   **Character Bible**: Lista esaustiva (Primary/Secondary/Tactical) con profili vocali (Età, Sesso, Timbro). È la fonte autoritativa per gli **Speaker ID** dello Stage C.
+    *   **Sound Design Palette**: 3 proposte di mood sonoro per la Dashboard.
+*   **Stage C Integration**: I profili dei personaggi qui definiti vengono iniettati nello Stage C (via Stage B), permettendo alla Regia Artistica di assegnare correttamente lo `speaking_style` e di separare le battute dal narratore.
+*   **Dashboard Interaction**: I dati popolano la **Casting Table**. Una volta che il Regista umano assegna i Voice ID e clicca "Salva", il `preproduction.json` diventa il contratto definitivo per lo **Stage D (Voice Proxy)**.
+
+3.  **Future Development (Long Books)**: **Sequential Contextual Injection**
     *   **Problema**: Libri > 800k caratteri sforano i limiti di quota (429) e di finestra di contesto.
     *   **Soluzione**: Divisione in blocchi da ~400k gestiti in modo ricorsivo.
     *   **Meccanismo**: Ogni blocco riceve il `Summary` e il `JSON` dei blocchi precedenti come "Preamble".
@@ -43,11 +49,10 @@ Lo Stage 0 è il "Cervello" preventivo che analizza il libro prima che inizi la 
 ## 🎨 Dashboard "Digital Director"
 La tab **Pre-production** è il centro di comando estetico del progetto.
 
-### Componenti Principali
--   **3D Cyber-Ring Carousel**: Selezione della **Global Voice** con rotazione 3D e anteprime audio. Le voci sono caricate dal Registry ARIA (Redis).
--   **Casting Table**: Popolata dallo **Stage 0**, permette l'assegnazione chirurgica dei doppiatori per ogni personaggio.
--   **Atmosphere Selection**: Permette di scegliere il "mood" del progetto.
--   **💾 Salva Dossier**: Scrive le scelte in `preproduction.json`.
+-   **3D Cyber-Ring Carousel**: Selezione della **Global Voice** con rotazione 3D e anteprime audio. Le voci sono caricate dal Registry ARIA (Redis 120).
+-   **Casting Table**: Popolata dai risultati dello **Stage 0.2**, permette l'assegnazione chirurgica dei doppiatori per ogni personaggio rilevato.
+-   **Atmosphere Selection**: Scelta del mood sonoro tra le 3 palette proposte dall'Intelligence.
+-   **💾 Salva Dossier**: Pulsante critico che scrive le scelte definitive dell'utente in `preproduction.json`.
 
 ### ⚖️ Logica di Precedenza Vocale (Stage D)
 Durante la generazione audio, lo Stage D risolve la voce da usare seguendo questa gerarchia:

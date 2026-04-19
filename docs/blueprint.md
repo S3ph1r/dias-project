@@ -1,196 +1,194 @@
 # DIAS - Distributed Immersive Audiobook System
-## Master Blueprint v6.3 (ARIA Gateway & Cloud Decoupling)
+## Master Blueprint v7.0 (Sound-on-Demand, Director/Engineer Architecture)
 
-**Data**: 03 Aprile 2026  
-**Status**: In Produzione (Stage 0-D validati E2E con Serial Orchestrator)  
-**Target Hardware**: Brain (LXC Backend) + PC Gaming (ARIA GPU Worker)  
+**Data**: 17 Aprile 2026
+**Status**: In Produzione (Stage 0-D validati E2E, Stage B2 Sound-on-Demand v4.1 validato)
+**Target Hardware**: Brain (LXC 190 Backend) + PC Gaming (ARIA GPU Worker, PC 139, RTX 5060 Ti 16GB)
 **NH-Mini Compliance**: Pienamente aderente a `.project-context` e `description-contracts.mdc`
 
 ---
 
 ### 1. Vision e Architettura
 
-DIAS (Distributed Immersive Audiobook System) è concepito come un **Regista Narrativo** che orchestra una pipeline distribuita per trasformare testi letterari in prodotti audio cinematografici.
+DIAS (Distributed Immersive Audiobook System) è un **Regista Narrativo** che orchestra una pipeline distribuita per trasformare testi letterari in audiobook teatrali di qualità cinematografica. Il benchmark qualitativo di riferimento è la **BBC Radio Drama degli anni '80** e **Star Wars Audio Drama (NPR, 1981)**: la musica non accompagna la narrazione, è un personaggio invisibile che respira con essa.
 
 ### 1.1 Architettura "Universal State Bus" (Redis 120)
-> Il sistema si basa sulla centralizzazione assoluta di Redis (LXC 190 -> 120) come bus di stato universale e memoria condivisa tra il Brain (LXC 190) e i Worker (Node 139).
 
-Il sistema segue una separazione netta tra la gestione del progetto e la fornitura di servizi di inferenza:
-- **Il Brain (Ruolo: Regia)**: Gestisce il ciclo di vita dell'opera (Stadi 0-G). Utilizza un **Master Registry** per tracciare il progresso. Può essere ospitato su qualsiasi nodo Linux (es. LXC).
-- **Project-Centric Management (v6.5)**: Ogni libro vive in una sandbox isolata in `data/projects/{project-id}/`. L'accesso è gestito via API Hub con risoluzione case-insensitive per garantire compatibilità tra Web e OS Linux. (Vedi [Guida Pre-produzione](./preproduction-guide.md)).
-- **L'Infrastruttura (Ruolo: Stato)**: Il "sistema nervoso" centrale (Redis). Ospita le code e i registri globali. Funge da punto di incontro agnostico.
-- **Il Worker (Ruolo: Esecuzione)**: Il motore di inferenza (ARIA, GPU). Vive indipendentemente e serve qualsiasi client tramite le code Redis.
-- **Flessibilità di Deployment**: Ogni ruolo è totalmente disaccoppiato. La posizione fisica dei nodi (LXC, PC dedicati, Cloud) è definita dalla configurazione (`.env`, `dias.yaml`) e non influisce sulla logica del codice.
+Il sistema si basa su Redis (LXC 120) come bus di stato universale tra il Brain (LXC 190) e i Worker (PC 139):
 
-### 1.2 Orchestrazione "Serial-Serial Handshake" (Marzo 2026)
-A differenza del modello streaming concorrente (v6.1), la v6.2 adotta un approccio a **Handshake Seriale**:
-- **Consistenza Totale**: Uno stadio non inizia a processare un libro finché lo stadio precedente non ha completato **tutti** i chunk e li ha persistiti correttamente su disco.
-- **Brain Orchestrator**: Il modulo `orchestrator.py` funge da supervisore, avviando i worker necessari, monitorando lo stato delle code Redis e confermando il passaggio di mano tra stadi (es. Stage B FINITO -> Stop Stage B -> Start Stage C).
-- **Resilienza NAT**: Questo approccio è ottimale per ambiente LXC e previene la congestione delle code in caso di interruzioni di rete o crash del PC Gaming.
+- **Il Brain (Ruolo: Regia)**: Gestisce il ciclo di vita dell'opera (Stadi 0-E). Utilizza un Master Registry per tracciare il progresso.
+- **Project-Centric Management**: Ogni libro vive in una sandbox isolata in `data/projects/{project-id}/`.
+- **L'Infrastruttura (Ruolo: Stato)**: Redis ospita le code e i registri globali, punto di incontro agnostico tra Brain e Worker.
+- **Il Worker (Ruolo: Esecuzione)**: ARIA (PC 139) è il motore di inferenza GPU. Serve qualsiasi client tramite le code Redis.
+- **Flessibilità di Deployment**: Ogni ruolo è totalmente disaccoppiato. La posizione fisica dei nodi è definita dalla configurazione (`.env`, `dias.yaml`).
+
+### 1.2 Orchestrazione "Serial Handshake"
+
+La pipeline adotta un approccio a **Handshake Seriale**: uno stadio non inizia finché lo stadio precedente non ha completato tutti i chunk e persistito i risultati su disco. Il modulo `orchestrator.py` funge da supervisore.
 
 ---
 
-### 2. Architettura Sequenziale a 9 Stadi (Intelligence Driven)
+### 2. Architettura della Pipeline (10 Stadi)
 
-0.  **[Stage 0] BookIntelligence**: Estrazione "DNA" del libro: mappa capitoli, personaggi parlanti (18+) e palette sonore. (Vedi [Inventory](./dias-component-inventory.md)).
-1.  **[A] TextIngester**: Estrazione da PDF/EPUB e chunking grezzo (CPU).
-2.  **[B] SemanticAnalyzer**: Analisi emotiva macro, speaking styles e marker narrativi.
-3.  **[B2] SoundDirector**: Analisi strutturale per il soundscape: individua i *Structural Anchors*.
-4.  **[C] SceneDirector**: Segmentazione dinamica per *Emotional Beat* e fonetica.
-5.  **[D] VoiceGenProxy**: Impacchettamento payload e delega ad ARIA.
-6.  **[E] MusicGenerator**: Produzione soundscape a tre livelli: Tappeto Atmosferico, Leitmotif e Sting.
-7.  **[F] AudioMixer**: Mixaggio multi-stem voce/musica/sfx con ducking adattivo.
-8.  **[G] MasteringEngine**: Finalizzazione MP3, metadati e Loudness -16 LUFS.
-
----
-
-### 3. Workflow Tecnico Dettagliato (v6.8)
-
-| Fase | Componente | Azione Dashboard | Backend / Codebase | Output / Persistenza | Consumatore |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **0. Intel** | **Stage 0** | `New Project` | Gemini analizza il testo intero | `fingerprint.json` | Regista (Casting) |
-| **1. Regia** | **Dossier** | `Save Casting` | Dashboard UI (Svelte) | `preproduction.json` | Stage D |
-| **2. Ingest** | **Stage A** | `Resume` | PDF → TXT → Chunk (~2500 parole) | `stages/stage_a/output/` | Stage B |
-| **3. Semant.** | **Stage B** | Automatico | Analisi emozionale macro | `stages/stage_b/output/` | Stage C |
-| **4. Anchor** | **Stage B2** | Automatico | Identifica punti di stacco musicali | `stages/stage_b2/output/` | Stage E |
-| **5. Scena** | **Stage C** | Automatico | Segmentazione Emotional Beats | `stages/stage_c/output/` | Stage D |
-| **6. Sintesi** | **Stage D** | Automatico | **Voice Proxy (ARIA/Qwen3)** | `.wav` in `stage_d/` | Stage F |
-| **7. Music** | **Stage E** | Automatico | **Music Proxy (ARIA/MusicGen)** | `.wav` in `stage_e/` | Stage F |
-| **8. Final** | **Stage F/G** | Automatico | Mixing multi-stem & Mastering | `final/{id}.mp3` | Utente Finale |
+| Stage | Nome | Compito Principale |
+| :--- | :--- | :--- |
+| **Stage 0** | Intel | Protocollo 0.1 (Discovery strutturale) + 0.2 (DNA creativo, Casting). Produce `fingerprint.json` e `preproduction.json`. |
+| **Stage A** | TextIngester | Scomposizione a imbuto: Macro-chunk (~2500 parole) + Micro-chunk (~300 parole). |
+| **Stage B** | SemanticAnalyzer | Analisi emotiva macro (valence/arousal/tension), Mood Propagation verso i micro-chunk. |
+| **Stage C** | SceneDirector | Segmentazione per Emotional Beat, Tag Splitting, istruzioni TTS Qwen3. |
+| **Stage D** | VoiceGenerator | TTS per ogni scena → file WAV fisici + Master Timing Grid. |
+| **Stage B2-Macro** | Musical Director | Produce MacroCue (PadRequest + PadArc) per ogni macro-chunk. |
+| **Stage B2-Micro** | Sound Designer (monolitico) | Produce IntegratedCueSheet + SoundShoppingList per ogni micro-chunk (ARCHITETTURA LEGACY, ancora attiva). |
+| **Stage B2-Micro-Director** | Narrative Event Extractor | Estrae eventi fisici narrativi → SoundEventScore in linguaggio naturale. (Split v1.0) |
+| **Stage B2-Micro-Engineer** | ACE-Step Spec Generator | Converte SoundEventScore in spec ACE-Step → IntegratedCueSheet. (Split v1.0) |
+| **Stage D2** | Sound Factory Client | Invia la SoundShoppingList aggregata ad ARIA → produce tutti gli asset audio (PAD, AMB, SFX, STING) via ACE-Step. |
+| **Stage E** | Mixdown | Assembla voce (WAV Stage D) + PAD stems (da HTDemucs) + AMB/SFX/STING → traccia finale mixata. |
 
 ---
 
-### 4. Navigazione Conoscenza (Index Integrato)
+### 3. Stage B2: Architettura Sound-on-Demand v4.1
 
-Tutta la conoscenza tecnica di DIAS è centralizzata qui:
-- 🏆 **[production-standard.md](./production-standard.md)**: **LO STANDARD.** Formula Oscar (0.75), parametri tecnici, fonetica e punteggiatura audio.
-- 📜 **[prompt-evolution.md](./prompt-evolution.md)**: Storia e registro delle versioni dei prompt (Stage 0, B, C).
-- 🗂️ **[inventory.md](./dias-inventory.md)**: Inventario universale di moduli, dashboard e tools.
-- 🎬 **[preproduction-guide.md](./preproduction-guide.md)**: Guida pratica al casting e al file `preproduction.json`.
-- ⚙️ **[technical-reference.md](./technical-reference.md)**: Manuale Sviluppatore (Log, Debug, Systemd, SOPS).
+Stage B2 è il cuore del sound design. Opera in modalità **Sound-on-Demand**: zero dipendenze da catalogo Redis, zero sound library pre-esistente. Ogni asset viene prodotto ex-novo da ARIA su richiesta.
+
+#### 3.1 B2-Macro (Musical Director)
+
+Analizza il macro-chunk (emozione, setting, arco narrativo) e produce:
+- **PadRequest**: canonical_id + production_prompt + production_tags (vocabolario Qwen3) + negative_prompt + parametri ACE-Step.
+- **PadArc**: partitura emotiva sequenza di segmenti `{start_s, end_s, intensity, note, roadmap_item}`. Stage E usa il PadArc per gestire dinamicamente i 4 stem HTDemucs (`bass/drums/vocals/other`).
+
+Prompt: `b2_macro_v4.0.yaml` (versione interna v4.2).
+
+#### 3.2 B2-Micro: Modalità Monolitica (Legacy)
+
+Una singola chiamata LLM per micro-chunk. Produce direttamente `IntegratedCueSheet` (scenes_automation + sound_shopping_list). Ancora funzionante e validata. Prompt: `b2_micro_v4.0.yaml` (versione interna v4.1).
+
+#### 3.3 B2-Micro: Modalità Split Director/Engineer (v1.0)
+
+Due chiamate LLM separate per micro-chunk, attivata con il flag `--split`:
+
+1. **B2-Micro-Director** (`stage_b2_micro_director.py`): analizza il testo in linguaggio naturale, identifica eventi fisici (AMB/SFX/STING) e comportamento PAD. Output: `SoundEventScore`. Nessun vocabolario tecnico.
+2. **B2-Micro-Engineer** (`stage_b2_micro_engineer.py`): converte il SoundEventScore in spec ACE-Step (`production_tags`, `canonical_id`, `guidance_scale`, `duration_s`). Output: `IntegratedCueSheet` (identico al formato monolitico — compatibile con Stage D2 e Stage E).
+
+Vantaggio chiave della modalità split: la shopping list viene costruita prima delle scenes_automation, rendendo strutturalmente impossibile il canonical_id mismatch.
 
 ---
 
-### 5. Principi Fondamentali di Stabilità e Self-Healing
+### 4. Principi di Sound Design (Paradigma BBC/Star Wars)
 
-#### 5.1 Gemini Quota & Rate Limiting (v2.0 - ARIA Delegated)
-Per prevenire i blocchi sull'API Google (Flash-Lite) e gestire il Free Tier in modo intelligente, DIAS ha **delegato interamente** la logica ad ARIA:
-- **ARIA Smart Gateway**: ARIA (LXC 139) centralizza il pacing (30s tra chiamate) e il lockout globale (10m su errore 429).
-- **Dumb Client**: DIAS non possiede più API Key. Invia i task a Redis e ARIA si occupa della conformità alle quote.
-- **Extended Resilience**: DIAS attende fino a 20 minuti una risposta da ARIA, permettendo al Gateway di gestire i periodi di cooldown senza far fallire la pipeline.
+#### PAD (Tappeto Musicale)
+- Prodotto da ACE-Step 1.5 XL SFT, durata ~8-20 minuti per capitolo (stesso del contenuto vocale).
+- ARIA esegue HTDemucs per separare 4 stem: `bass` (frequenze basse), `drums` (elementi percussivi), `vocals` (contenuto vocale/coro), `other` (melodia, pad, archi, tutto il resto).
+- Stage E gestisce i 4 stem dinamicamente via PadArc:
+  - `low` = solo bass
+  - `mid` = bass + other
+  - `high` = bass + other + drums (+ vocals se presenti)
+- Ducking locale (respiro micro) gestito da `MicroCueAutomation.pad_volume_automation`.
 
-#### 5.2 Stage 0 Hardening (v6.8 - Sequential Strategy)
-Per gestire libri di grandi dimensioni senza perdere il contesto globale o sforare le quote:
-- **Recursive Processing**: Divisione in blocchi con iniezione del riassunto e del JSON precedente come "Context Preamble".
-- **Coerenza Identitaria**: Il Character Bible viene costruito incrementalmente, garantendo che ogni nuovo blocco rispetti i casting già definiti.
-- **Prompts Esternalizzati**: Ogni stadio (0, B, C) utilizza template YAML versionati (`config/prompts/`), permettendo di affinare la qualità della regia senza modificare il codice sorgente del sistema.
-- **Pacing Manuale**: Inserimento di pause tecniche (60s) tra gli step ad alto consumo di token. (Vedi dettagli in **[Guida Pre-produzione](./preproduction-guide.md)**).
+#### AMB (Ambiente — cambio di scena)
+- Cue transitionale breve: **3-5 secondi**. Non è un loop.
+- Segna il cambio di ambientazione fisica tra scene consecutive (interno → esterno, silenzio → folla).
+- **Max 1 per micro-chunk**. Spesso zero.
+- Si applica solo alla scena in cui avviene il cambio.
 
-#### 5.3 Master Registry: Il Sistema a "Tripla Verifica"
-Per garantire resilienza a crash e riavvii, DIAS convalida ogni task incrociando tre fonti:
-1.  **Filesystem (Realtà Fisica)**: Il file `.wav` o `.json` finale esiste davvero su disco?
-2.  **Redis Registry (Stato Volatile)**: Il task è mappato nell'Hash `dias:registry:{book_id}` come `COMPLETED`? (Stati: `PENDING`, `IN_FLIGHT`, `COMPLETED`, `FAILED`).
-3.  **Redis Queues (Trasporto)**: Il messaggio è fisicamente presente nella coda di ARIA?
+#### SFX (Effetto Puntuale)
+- Effetto fisico puntuale: **0.3-2 secondi**.
+- Solo per momenti culminanti della scena (l'azione accade, non la preparazione).
+- **Max 1 per scena**. Meno è meglio.
+- `sfx_timing`: start | middle | end.
 
-#### 5.4 Architettura "Linked-but-Independent" (DIAS vs ARIA)
-DIAS è il **Narrative Director** (LXC Brain), ARIA è il **Cuore Esecutivo** (Windows GPU).
-- **Separazione Netta**: DIAS gestisce il Libro (Stadi A-G), ARIA gestisce l'Inferenza (GPU, VRAM, Modelli).
-- **Universal Bus**: La comunicazione avviene via Redis. Se DIAS crasha, ARIA finisce il lavoro. Se ARIA crasha, DIAS rileva lo "Zombie Task" (>20m `IN_FLIGHT`) e lo riaccoda.
-- **Agnostic Proxy**: DIAS non ha API Key; invia task "agnostici" e riceve risultati, permettendo di cambiare backend (es. da Qwen3 a Fish) senza toccare la pipeline.
+#### STING (Accento Orchestrale)
+- Sottolineatura drammatica: **2-4 secondi**.
+- Solo per rivelazioni narrative irreversibili (svolta, morte, tradimento confermato).
+- **Max 1 per micro-chunk**. Mai all'inizio di una scena.
+- `sting_timing`: middle | end (mai start).
 
-#### 5.5 Master Registry & Skipping Logic (Idempotenza Blindata)
-Se un processo si interrompe, DIAS non riparte da zero. La decisione di "cosa fare" è basata sul **Master Registry (Redis Hash)**:
-- **ActiveTaskTracker**: Usato in Stage B, C e D per tracciare ogni chunk/scena (`PENDING`, `IN_FLIGHT`, `COMPLETED`).
-- **Tripla Verifica**: Prima di agire, DIAS controlla:
-    1. Se il file esiste fisicamente su disco (Filesystem).
-    2. Se il task è segnato come `COMPLETED` nel registro (Redis).
-    3. Se il risultato è già presente nella casella postale (Mailbox).
-- Se il file esiste, lo carica istantaneamente, salta l'esecuzione dell'LLM (risparmiando token) e passa allo stadio successivo.
+#### ARIA Sound Factory
+- Modello unico: **ACE-Step 1.5 XL SFT** per tutti gli asset (PAD, AMB, SFX, STING).
+- Hardware: PC 139, RTX 5060 Ti 16GB VRAM.
+- Timing: ~4.5 minuti per 30 secondi di output generato (LM ~240s + DiT ~35s).
+- Queue Redis: `aria:q:mus:local:acestep-1.5-xl-sft:dias`.
+- Output type: `pad | amb | sfx | sting`.
 
-#### 5.6 File Naming Convention
-I file seguono *esclusivamente* lo standard `hyphenated`:
+---
+
+### 5. Flusso Dati B2 Completo
+
+```
+Stage B (SemanticAnalyzer)
+  → ChunkAnalysis (emozione, setting, arco)
+       ↓
+Stage B2-Macro
+  → MacroCue {PadRequest + PadArc}
+       ↓
+Stage B2-Micro [monolitico] → IntegratedCueSheet {scenes_automation + shopping_list}
+       oppure
+Stage B2-Micro-Director → SoundEventScore {scene → eventi fisici}
+       ↓
+Stage B2-Micro-Engineer → IntegratedCueSheet {scenes_automation + shopping_list}
+       ↓
+Aggregatore (run_b2_pipeline.py) → sound_shopping_list_aggregata.json
+       ↓
+Stage D2 (Sound Factory Client) → invia assets ad ARIA → WAV files
+       ↓
+Stage E (Mixdown) → voce + PAD stems + AMB/SFX/STING → traccia finale
+```
+
+---
+
+### 6. Modelli Dati Chiave (Stage B2)
+
+| Modello | Prodotto da | Consumato da |
+| :--- | :--- | :--- |
+| `MacroCue` | B2-Macro | B2-Micro, Stage E |
+| `PadRequest` | B2-Macro (dentro MacroCue) | Stage D2 (produzione PAD) |
+| `PadArcSegment` | B2-Macro (dentro PadRequest) | Stage E (gestione stem) |
+| `SoundEventScore` | B2-Micro-Director | B2-Micro-Engineer |
+| `SceneEvent` | B2-Micro-Director | B2-Micro-Engineer |
+| `AmbientEvent` | B2-Micro-Director | B2-Micro-Engineer |
+| `SfxEvent` | B2-Micro-Director | B2-Micro-Engineer |
+| `StingEvent` | B2-Micro-Director | B2-Micro-Engineer |
+| `IntegratedCueSheet` | B2-Micro (mono o Engineer) | Stage E |
+| `MicroCueAutomation` | B2-Micro (dentro IntegratedCueSheet) | Stage E |
+| `SoundShoppingItem` | B2-Micro (dentro IntegratedCueSheet) | Stage D2 |
+
+---
+
+### 7. Principi di Stabilità
+
+#### 7.1 Idempotenza Blindata (Master Registry)
+Ogni stadio controlla tre fonti prima di agire:
+1. **Filesystem**: il file output esiste su disco?
+2. **Redis Registry**: il task è `COMPLETED` nell'Hash `dias:registry:{book_id}`?
+3. **Redis Queues**: il messaggio è presente nella coda?
+
+Se il file esiste, lo carica e salta l'esecuzione LLM.
+
+#### 7.2 Architettura "Linked-but-Independent" (DIAS vs ARIA)
+- **DIAS** è il Narrative Director (LXC Brain). Gestisce il ciclo di vita del libro.
+- **ARIA** è il Cuore Esecutivo (Windows GPU). Gestisce inferenza e produzione audio.
+- La comunicazione avviene via Redis. I crash su un nodo non bloccano l'altro.
+
+#### 7.3 File Naming Convention
+I file seguono lo standard `hyphenated`:
 `{BookID}-chunk-{000}-scenes-{YYYYMMDD_HHMMSS}.{json|wav}`
 
----
-
-### 6. Approfondimento degli Stage Core
-
-#### Stage C: Scene Director (La "Regia Fine")
-Lo Stage C è il cuore qualitativo di DIAS.
-- **Limiti e Efficienza (ARIA Cloud Gateway)**: Il sistema è ottimizzato per il Free Tier di Google (**20 chiamate/giorno**). La gestione delle quote e del rate limiting è ora delegata interamente ad ARIA tramite il `GatewayClient`.
-- **Emotional Beats**: Non suddivide i blocchi testuali meccanicamente (es. a 2500 parole), ma delega a Gemini di spezzare la narrazione nei momenti in cui avviene un cambio netto di tono (es. da riflessione a dialogo teso).
-- **Master JSON & Scene Splitting**: Lo Stage C produce inicialmente un unico **Master JSON** contenente l'array di tutte le scene individuate nel chunk. Questo file viene poi processato per generare i task individuali per lo Stage D.
-- **Isolamento Strutturale**: Obbliga ad isolare titoli di libri o capitoli in scene singole (per evitare che il TTS li legga a velocità sostenuta incollati al primo paragrafo).
-- **Normalizzazione Fonetica Assoluta**: Il testo generato (`clean_text`) non contiene alcun tag in linea. I numeri vengono decodificati in lettere ("2042" → "duemilaquarantadue") e le pronunce ambigue vengono assistite da accenti testuali (es. "pàtina", "futòn").
-- **Standard Teatrale Qwen3-TTS (v1.7b)**: Implementa la "Formula C" (**Ref_text + Subtalker 0.75**) per una prosodia sovrapponibile a ElevenLabs. Vedi la [Guida Tecnica](./production-standard.md) per i dettagli del benchmark.
-- **Istruzioni Qwen3-TTS (v1.5 Theatrical)**: Implementa la struttura **Anchor + Variation**. Ogni istruzione inizia con un'ancora vocale fissa (`narrator_base_tone`) per stabilizzare il tono del modello, seguita da variazioni fisiche e ritmiche basate sul contesto di Stage B (arc narrativo, speaking styles).
-- **Prompting Esternalizzato**: I template di regia sono isolati in file YAML (`config/prompts/stage_c/v1.4_contextual.yaml`), permettendo A/B testing e modifiche "hot" senza toccare il codice.
-- **Supporto Dialoghi**: Individua i cambi di speaker e genera `dialogue_notes` per aiutare il TTS a differenziare le voci.
-
-#### Stage D: Voice Generator Proxy (La Delega ad ARIA)
-Lo Stage D risolve dinamicamente la voce e le istruzioni TTS basandosi sul **Dossier di Pre-produzione** e sugli instruct generati dallo Stage C.
-- **Ruolo di Proxy**: Non esegue inferenza LLM propria; riceve il campo `qwen3_instruct` (o `fish_instruct`) già confezionato dallo Stage C per garantire coerenza espressiva.
-- **Logica di Precedenza Vocale (v6.6)**: Risolve il `voice_id` con la seguente priorità:
-    1. **Casting Personaggio**: Se lo speaker della scena ha una voce assegnata in `preproduction.json`.
-    2. **Global Voice**: Se la scena è narrativa o lo speaker non è mappato, usa il Narratore scelto nel carosello 3D.
-    3. **System Default**: Fallback su `luca` se nessuna configurazione è presente.
-- **Routing Dinamico**: Il backend di target è definito da `model_id` (es. `qwen3-tts-1.7b`).
-- **Configurabilità Centralizzata (v2.2)**: Legge parametri tecnici (Temperature, Top_P) direttamente da `dias.yaml`.
-- **Resilienza e Callback**: Inserisce nel payload `callback_key` ed entra in uno stato `BRPOP` congelato, attendendo il file da ARIA (PC 139).
-
-#### Stage E: Music Generator Proxy (La Colonna Sonora Cinematica)
-Lo Stage E implementa un modello a **tre stem** per un soundscape cinematico:
-- **Stem A — Tappeto Atmosferico**: File lungo (~10 min/chunk), generato una volta per capitolo da `primary_emotion` + `setting` di Stage B. Crea il "pavimento" sonoro continuo.
-- **Stem B — Leitmotif**: Micro-stem (15-30s) associati a personaggi/luoghi specifici, inseriti nelle scene dove il personaggio è protagonista (da `entities` di Stage B).
-- **Stem C — Sting da Bridge**: File corti evocativi (3-8s) generati solo per i `structural_anchors` di **Stage B2** — i momenti dove la voce si sospende e la musica parla da sola.
-- **Agnostic Music Proxy**: Come Stage D, DIAS delega il calcolo ad ARIA via coda `gpu:queue:music:musicgen-small`.
-- **Resilienza e Skipping**: *Skipping Logic* garantisce che i file già generati non vengano riprocessati.
-- **→ Vedi [Sound Design Blueprint](./sound_design_blueprint.md) per la specifica completa.**
-
-#### Stage B2: Sound Director (Analisi Strutturale Sonora)
-Stage dedicato (eseguito dopo B, prima di C) che usa un prompt LLM chirurgico per identificare i **Structural Anchors** — i punti dove la musica deve prendere il sopravvento sulla voce:
-- **Trigger types**: `chapter_boundary`, `chronos_shift`, `topos_shift`, `dramatic_pivot`, `emotional_reversal`.
-- **Regola di rarità**: Max 3-4 anchor per chunk (~2500 parole) per evitare la meccanicità.
-- **Output**: `structural_anchors[]` + `global_sound_palette` per Stage E/F.
-- **Separato da Stage B** per preservare la qualità del prompt semantico (Flash-Lite è sensibile al prompt overloading).
-
-#### Stage F/G: Mixing e Mastering (Post-Produzione Cinematica)
-- **Multi-Stem Mixing**: Voce + Stem A (Atmosfera) + Stem B (Leitmotif) + Stem C (Stings).
-- **Ducking Adattivo**: -20dB durante narrazione, -14dB durante pause, voce **sospesa** durante Structural Anchors.
-- **Silenzio come Strumento**: Fade a -30dB nei monologhi interni per massimizzare l'espressività.
-- **Mastering Finale**: Normalizzazione a -16 LUFS e output MP3 320kbps.
+#### 7.4 Resilienza Gemini (Rate Limiting)
+ARIA centralizza il pacing. DIAS attende fino a 20 minuti una risposta, permettendo ad ARIA di gestire i periodi di cooldown (429/503) senza far fallire la pipeline.
 
 ---
 
-### 7. Audio Analysis Layer (Roadmap)
-DIAS integra `librosa` e `scipy` per il monitoraggio qualitativo:
-- **Librerie**: `librosa`, `scipy`, `matplotlib`, `pydub`, `soundfile`.
-- **Metriche**: Pitch Correlation (F0) > 0.60 e Energy Correlation (RMS) > 0.85 rispetto al reference umano.
-- **Feature Future**: Silence Trimmer automatico, Breath Detection e Normalizzazione RMS adattiva pre-mixing.
+### 8. Navigazione Documentazione
+
+| Documento | Contenuto |
+| :--- | :--- |
+| [dias-workflow-logic.md](./dias-workflow-logic.md) | Mappatura completa degli stage, flusso B2 con le due modalità |
+| [dias-inventory.md](./dias-inventory.md) | Inventario tecnico di tutti i file Python, prompt YAML, modelli |
+| [technical-reference.md](./technical-reference.md) | Specifiche low-level: deployment, SOPS/Age, Redis, schemi JSON |
+| [production-standard.md](./production-standard.md) | Standard qualità voce (Formula Oscar), punteggiatura audio, sound design quantitativo |
+| [dias-aria-integration-master.md](./dias-aria-integration-master.md) | Contratto tecnico DIAS-ARIA: ACE-Step, queue Redis, timing, HTDemucs |
+| [preproduction-guide.md](./preproduction-guide.md) | Guida pratica Stage 0, Casting, Dashboard |
+| [prompt-evolution.md](./prompt-evolution.md) | Storia e registro versioni prompt (Stage 0, B, B2, C) |
 
 ---
 
-### 8. Visione d'Insieme: Il "Radiofilm" (BBC Radio Drama Vision)
-DIAS non è un semplice Text-to-Speech avanzato: è un **Radiofilm**. Il riferimento culturale è la **BBC Radio Drama** o una **Serie Netflix adattata per l'audio**. Il suono non accompagna la narrazione, ma **è** la narrazione stessa.
-- **Esempio Pratico**: La voce narrante si ferma per 4 secondi, la musica sale in un accordo basso e metallico per sottolineare un momento di tensione, poi la voce riprende più bassa.
-- **Layer di Memoria**: Il sistema opera su tre livelli (Libro, Capitolo, Scena) per garantire che ogni dettaglio acustico sia orchestrato dalla regia AI.
-
----
-
-### 9. Strategia a Lungo Termine e Resilienza
-
-#### 9.1 Pattern Architetturale: "Pipeline Stage Resiliente"
-Il sistema DIAS ha consolidato un pattern riutilizzabile per ogni stadio:
-- **Input asincrono**: Da coda Redis → Decodifica JSON.
-- **Dumb Processing**: Esecuzione della logica senza gestione diretta delle API (delega ad ARIA).
-- **Checkpointed Output**: Salvataggio su Filesystem + Aggiornamento Registro + Push in coda successiva.
-- **Atomic Resume**: Capacità di saltare il lavoro già fatto analizzando lo stato del disco (Idempotenza).
-
-#### 9.2 Analisi dei Rischi e Mitigazione
-- **Saturazione VRAM**: Mitigata dalla gestione centralizzata delle code in ARIA (un solo modello in VRAM alla volta se necessario).
-- **Quota Exhaustion**: Gestita dal lockout globale di 15m in ARIA e dalle pause manuali (60s) nello Stage 0.
-- **Drift Semantico (Long Books)**: Mitigato dalla strategia di iniezione contestuale e riassunti sequenziali (v6.8).
-- **Audio Quality Hallucinations**: Mitigata dal livello di analisi audio (`librosa`) per rilevare pause anomale o clipping.
-
----
-*Ultimo aggiornamento: 03 Aprile 2026 — Restore integrale e integrazione workflow v6.8.*
+*Ultimo aggiornamento: 17 Aprile 2026 — v7.0: Sound-on-Demand v4.1, architettura Director/Engineer, rimozione riferimenti ai vecchi sistemi (Redis catalog, MusicGen, AudioLDM, sound library).*

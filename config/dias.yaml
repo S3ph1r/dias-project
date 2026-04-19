@@ -13,8 +13,8 @@ google:
   response_mime_type: "application/json"
 
 # Stage B and C prompt versions (A/B testing)
-stage_b_prompt_path: "config/prompts/stage_b/v1.0_base.yaml"
-stage_c_prompt_path: "config/prompts/stage_c/v2.3_monastic_theatrical.yaml"
+stage_b_prompt_path: "config/prompts/stage_b/b_semantic_v1.1.yaml"
+stage_c_prompt_path: "config/prompts/stage_c/c_monastic_v2.3.yaml"
 
 # Local Models (GPU Worker)
 models:
@@ -37,7 +37,7 @@ models:
 
 # Redis
 redis:
-  host: "localhost" # Override via REDIS_HOST env var
+  host: "192.168.1.120" # Override via REDIS_HOST env var
   port: 6379
   db: 0
   decode_responses: true

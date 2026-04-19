@@ -346,7 +346,7 @@ class StageBSemanticAnalyzer(BaseStage):
         from pathlib import Path
 
         # Caricamento del prompt esternalizzato
-        prompt_path = getattr(self.config, "stage_b_prompt_path", "config/prompts/stage_b/v1.0_base.yaml")
+        prompt_path = getattr(self.config, "stage_b_prompt_path", "config/prompts/stage_b/b_semantic_v1.1.yaml")
         prompt_full_path = Path(__file__).parent.parent.parent / prompt_path
 
         try:
