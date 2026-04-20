@@ -153,7 +153,7 @@ def extract_text_task(file_path: Path, txt_path: Path, project_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
-@app.get("/")
+@app.get("/health")
 async def root():
     return {
         "status": "online",
