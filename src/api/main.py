@@ -1,7 +1,12 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import os
+
+# Sub-path support: set DIAS_APP_BASE=/dias when served behind a reverse proxy
+# at a non-root path. Affects audio URL generation.
+APP_BASE_PATH = os.environ.get("DIAS_APP_BASE", "").rstrip("/")
 import json
 import re
 from pathlib import Path
@@ -941,7 +946,7 @@ async def get_chapter_scenes(project_id: str, chapter_id: str):
                     if wav_matches:
                         wav_path = wav_matches[0]
                         rel_url = wav_path.relative_to(persistence.base_path / "projects")
-                        scene["audio_url"] = f"/static/projects/{rel_url}"
+                        scene["audio_url"] = f"{APP_BASE_PATH}/static/projects/{rel_url}"
                         
                         # Also check for JSON metadata in Stage D
                         prod_file = wav_path.with_suffix(".json")
@@ -1019,6 +1024,29 @@ async def retry_scene(project_id: str, scene_id: str, payload: Dict[str, Any] = 
         return {"status": "success", "message": f"Scene {scene_id} re-queued"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ─── Svelte static build (deve essere registrato DOPO tutte le API routes) ───
+# Build generata con: PUBLIC_BASE_PATH=/dias npm run build
+# Servita da FastAPI su porta 8000; nginx espone a /dias/ con prefix strip.
+
+_svelte_build = BASE_DIR / "src" / "dashboard" / "build"
+if _svelte_build.exists():
+    # Asset Vite (_app/immutable/..., favicon, ecc.)
+    if (_svelte_build / "_app").exists():
+        app.mount("/_app", StaticFiles(directory=str(_svelte_build / "_app")), name="svelte-app")
+
+    @app.get("/", include_in_schema=False)
+    async def _serve_index():
+        return FileResponse(_svelte_build / "index.html")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def _serve_spa(path: str):
+        """SPA catch-all: serve file se esiste, altrimenti index.html per il routing Svelte."""
+        candidate = _svelte_build / path
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_svelte_build / "index.html")
+
 
 if __name__ == "__main__":
     import uvicorn

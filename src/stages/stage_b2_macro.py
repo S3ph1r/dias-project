@@ -118,6 +118,41 @@ class StageB2Macro:
         except Exception:
             return 900.0
 
+    def _get_scene_boundaries(self, chunk_label: str) -> str:
+        """
+        Restituisce una stringa compatta con i timestamp di inizio di ogni micro-blocco.
+        Usata dal prompt per allineare i pad_arc segments ai confini narrativi reali.
+        """
+        grid_file = (
+            self.persistence.project_root
+            / "stages" / "stage_d" / "master_timing_grid.json"
+        )
+        if not grid_file.exists():
+            return "  (Timing grid non disponibile — usa proporzioni narrative)"
+        try:
+            with open(grid_file, "r", encoding="utf-8") as f:
+                grid = json.load(f)
+            macro_data = grid.get("macro_chunks", {}).get(chunk_label, {})
+            micro_chunks = macro_data.get("micro_chunks", {})
+            if not micro_chunks:
+                return "  (Nessun micro-blocco in timing grid)"
+
+            lines = []
+            for micro_id in sorted(micro_chunks):
+                scenes = micro_chunks[micro_id].get("scenes", [])
+                if not scenes:
+                    continue
+                t_start = float(scenes[0].get("start_offset", 0))
+                last = scenes[-1]
+                t_end = float(last.get("start_offset", 0)) + float(last.get("total_scene_time", 0))
+                m, s = divmod(int(t_start), 60)
+                lines.append(
+                    f"  • {micro_id}: {m:02d}:{s:02d} ({t_start:.0f}s) → {t_end:.0f}s"
+                )
+            return "\n".join(lines)
+        except Exception:
+            return "  (Errore lettura timing grid)"
+
     # ─────────────────────────────────────────────────────────────
     # Prompt Preparation
     # ─────────────────────────────────────────────────────────────
@@ -130,6 +165,7 @@ class StageB2Macro:
         total_duration_s: float,
         dossier: Dict,
         proposals: List[Dict],
+        scene_boundaries: str = "",
     ) -> str:
         with open(self.PROMPT_PATH, "r", encoding="utf-8") as f:
             template = yaml.safe_load(f).get("prompt_template", "")
@@ -161,7 +197,8 @@ class StageB2Macro:
             summary=block_analysis.get("summary", ""),
             audio_cues=json.dumps(block_analysis.get("audio_cues", []), ensure_ascii=False),
             total_duration_s=int(total_duration_s),
-            chunk_text=chunk_text[:6000],  # Limita a ~6000 chars per non saturare il contesto
+            scene_boundaries=scene_boundaries,
+            chunk_text=chunk_text[:6000],
         )
 
     # ─────────────────────────────────────────────────────────────
@@ -187,6 +224,7 @@ class StageB2Macro:
 
         chunk_text = self._load_chunk_text(chunk_label)
         total_duration_s = self._get_chunk_total_duration(chunk_label)
+        scene_boundaries = self._get_scene_boundaries(chunk_label)
         dossier = self._load_preproduction_dossier()
         proposals = self._load_palette_proposals()
 
@@ -195,7 +233,8 @@ class StageB2Macro:
 
         # 3. Prepare prompt and call Gemini
         prompt = self._prepare_prompt(
-            chunk_label, chunk_analysis, chunk_text, total_duration_s, dossier, proposals
+            chunk_label, chunk_analysis, chunk_text, total_duration_s, dossier, proposals,
+            scene_boundaries=scene_boundaries,
         )
         job_id = f"b2-macro-{self.project_id}-{chunk_label}"
 

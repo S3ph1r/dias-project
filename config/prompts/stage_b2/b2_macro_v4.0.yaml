@@ -44,6 +44,11 @@ prompt_template: |
 
   DURATA TOTALE DEL CAPITOLO: {total_duration_s} secondi
 
+  CONFINI DEI MICRO-BLOCCHI (timestamp di inizio di ogni blocco narrativo nel capitolo):
+  Usa questi come punti di ancoraggio per i segmenti del pad_arc. Fai coincidere
+  i cambi di intensità con i confini dei blocchi, non a metà di una scena.
+{scene_boundaries}
+
   ════════════════════════════════════════════════════════════
   SEZIONE C — TESTO DEL CAPITOLO (Da Stage A)
   ════════════════════════════════════════════════════════════

@@ -153,7 +153,10 @@ prompt_template: |
 
   REGOLA PAD BUILD+DUCKING:
   Se pad_volume_automation = "build" → pad_duck_depth DEVE essere null.
-  Se pad_volume_automation = "ducking" → pad_duck_depth = "shallow" | "medium" | "deep".
+  Se pad_volume_automation = "ducking" → pad_duck_depth = "none" | "light" | "medium" | "heavy".
+  Se pad_volume_automation = "neutral" → pad_duck_depth DEVE essere null.
+
+  VALORI VALIDI pad_fade_speed: "instant" | "sharp" | "smooth" | "slow"  (NO altri valori).
 
   ════════════════════════════════════════════════════════════
   SEZIONE E — FORMATO OUTPUT JSON

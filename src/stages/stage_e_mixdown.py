@@ -59,15 +59,18 @@ DUCK_MEDIUM = -14.0
 DUCK_HEAVY  = -20.0
 
 DUCK_DEPTH_MAP = {
-    "none":   DUCK_NONE,
-    "light":  DUCK_LIGHT,
-    "medium": DUCK_MEDIUM,
-    "heavy":  DUCK_HEAVY,
+    "none":    DUCK_NONE,
+    "light":   DUCK_LIGHT,
+    "shallow": DUCK_LIGHT,   # alias LLM
+    "medium":  DUCK_MEDIUM,
+    "deep":    DUCK_HEAVY,   # alias LLM
+    "heavy":   DUCK_HEAVY,
 }
 
 # Fade durations per pad_fade_speed (ms)
 FADE_MS_MAP = {
     "instant": 30,
+    "snap":    30,    # alias LLM
     "sharp":   60,
     "smooth":  180,
     "slow":    400,

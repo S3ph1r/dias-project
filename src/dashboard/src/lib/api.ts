@@ -78,7 +78,11 @@ export interface PreproductionData {
     global_voice?: string;
 }
 
-export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+// PUBLIC_BASE_PATH è settato a build time: PUBLIC_BASE_PATH=/dias npm run build
+// In local dev (porta 5173): non settato → usa VITE_API_BASE o localhost:8000
+// In production (nginx /dias/): '/dias' → tutte le chiamate vanno a /dias/...
+const _appBase: string = (import.meta.env.PUBLIC_BASE_PATH as string) || '';
+export const API_BASE = _appBase || import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 
 export async function fetchProjects(): Promise<Project[]> {
     const res = await fetch(`${API_BASE}/projects`);
