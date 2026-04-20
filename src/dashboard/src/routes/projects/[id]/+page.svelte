@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { slide } from 'svelte/transition';
   import { page } from '$app/state';
+  import { resolve } from '$app/paths';
   import {
     fetchProjectDetails, pushSceneToStageD, fetchVoices, resumePipeline,
     checkResume, resetStage, fetchChapters, fetchFingerprint, fetchPreproduction,
@@ -208,7 +209,7 @@
   <!-- Header -->
   <header class="space-y-4">
     <div class="flex items-center gap-4">
-      <a href="/" class="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 transition-colors">
+      <a href={resolve('/')} class="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 transition-colors">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><path d="m15 18-6-6 6-6"/></svg>
       </a>
       <div class="h-px flex-1 bg-slate-800"></div>

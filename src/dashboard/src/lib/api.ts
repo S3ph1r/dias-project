@@ -78,11 +78,21 @@ export interface PreproductionData {
     global_voice?: string;
 }
 
-// PUBLIC_BASE_PATH è settato a build time: PUBLIC_BASE_PATH=/dias npm run build
-// In local dev (porta 5173): non settato → usa VITE_API_BASE o localhost:8000
-// In production (nginx /dias/): '/dias' → tutte le chiamate vanno a /dias/...
-const _appBase: string = (import.meta.env.PUBLIC_BASE_PATH as string) || '';
-export const API_BASE = _appBase || import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+// Legge il base path dall'elemento <base href="..."> che SvelteKit inietta nel HTML.
+// In produzione (nginx /dias/): <base href="/dias/"> → API_BASE = '/dias'
+// In local dev (porta 5173): <base href="/"> o assente → cade su VITE_API_BASE o localhost:8000
+function _detectApiBase(): string {
+    if (typeof document !== 'undefined') {
+        const baseEl = document.querySelector('base') as HTMLBaseElement | null;
+        if (baseEl?.href) {
+            const u = new URL(baseEl.href);
+            const p = u.pathname.replace(/\/$/, ''); // '/dias/' → '/dias'
+            if (p && p !== '/') return p;
+        }
+    }
+    return import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
+}
+export const API_BASE = _detectApiBase();
 
 export async function fetchProjects(): Promise<Project[]> {
     const res = await fetch(`${API_BASE}/projects`);

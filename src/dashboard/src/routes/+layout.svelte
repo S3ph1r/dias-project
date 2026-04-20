@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { slide, fade } from 'svelte/transition';
   import { fetchQuota, API_BASE } from '$lib/api';
+  import { base } from '$app/paths';
   import { player } from '$lib/player.svelte';
   import "../app.css";
   
@@ -36,14 +37,14 @@
     </div>
     
     <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
-      <a href="/" class="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-800 text-sky-400 font-medium transition-all group">
+      <a href="{base}/" class="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-800 text-sky-400 font-medium transition-all group">
         <span class="w-2 h-2 rounded-full bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.8)]"></span>
         Dashboard
       </a>
-      <a href="/projects" class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800/50 text-slate-400 hover:text-white transition-all">
+      <a href="{base}/projects" class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800/50 text-slate-400 hover:text-white transition-all">
         Progetti
       </a>
-      <a href="/aria" class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800/50 text-slate-400 hover:text-white transition-all">
+      <a href="{base}/aria" class="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800/50 text-slate-400 hover:text-white transition-all">
         ARIA Nodes
       </a>
     </nav>

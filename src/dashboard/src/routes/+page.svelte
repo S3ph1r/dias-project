@@ -3,6 +3,7 @@
   import { fetchProjects, fetchAriaNodes, type Project, type AriaNode } from '$lib/api';
   import UploadModal from '$lib/components/UploadModal.svelte';
   import { goto } from '$app/navigation';
+  import { resolve } from '$app/paths';
 
   let projects = $state<Project[]>([]);
   let ariaNodes = $state<AriaNode[]>([]);
@@ -113,7 +114,7 @@
     {:else}
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         {#each projects as project}
-          <a href="/projects/{project.id}" class="group bg-slate-900/40 backdrop-blur-xl border border-slate-800 hover:border-sky-500/50 p-8 rounded-3xl transition-all hover:translate-y-[-4px] relative overflow-hidden">
+          <a href={resolve(`/projects/${project.id}`)} class="group bg-slate-900/40 backdrop-blur-xl border border-slate-800 hover:border-sky-500/50 p-8 rounded-3xl transition-all hover:translate-y-[-4px] relative overflow-hidden">
             <div class="absolute top-0 right-0 p-8">
               <div class="w-3 h-3 rounded-full {getStatusColor('running')} shadow-[0_0_12px_rgba(16,185,129,0.5)]"></div>
             </div>
