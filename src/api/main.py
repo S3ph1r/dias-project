@@ -459,7 +459,7 @@ STAGE_MAP = {
     "stage_c": "Scene Direction",
     "stage_d": "Voice Generation (Qwen3TTS)",
     "stage_e": "Music Generation",
-    "stage_f": "Audio Mixing",
+    "stage_f": "Audiobook Mastering",
     "stage_g": "Mastering Engine"
 }
 
@@ -513,7 +513,7 @@ async def get_project_status(project_id: str) -> Dict[str, Any]:
             "name": STAGE_MAP.get(stage_key, stage_key),
             "status": status,
             "files": files,
-            "is_placeholder": stage_key in ["stage_e", "stage_f", "stage_g"]
+            "is_placeholder": stage_key in ["stage_e", "stage_g"]
         })
 
     completed = sum(1 for s in detailed_stages if s["status"] == "done")
@@ -736,6 +736,31 @@ async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = Non
         logger.info(f"Pipeline flow delegated to Serial Orchestrator for {clean_title}")
         return {"status": "success", "message": f"Orchestrator started for {clean_title}"}
         
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/projects/{project_id}/master")
+async def trigger_audiobook_master(project_id: str):
+    """
+    Avvia Stage F (Audiobook Mastering) direttamente per il progetto.
+    Esegue build_audiobook in background senza passare dall'orchestratore.
+    """
+    try:
+        clean_id = persistence.normalize_id(project_id)
+        project_dir = get_project_dir(clean_id)
+        if not project_dir.exists():
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        import subprocess
+        python_bin = BASE_DIR / ".venv" / "bin" / "python3"
+        stage_f_script = BASE_DIR / "src" / "stages" / "stage_f_audiobook.py"
+        log_file = BASE_DIR / "logs" / "stage_f_audiobook.log"
+        cmd = f"nohup env PYTHONPATH=. {python_bin} {stage_f_script} {clean_id} >> {log_file} 2>&1 &"
+        subprocess.Popen(cmd, shell=True, cwd=BASE_DIR)
+
+        return {"status": "started", "message": f"Stage F avviato per {clean_id}"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

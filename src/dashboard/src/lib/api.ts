@@ -219,3 +219,9 @@ export async function fetchWorkerStatus(): Promise<{ workers: Record<string, 'ru
     if (!res.ok) throw new Error('Failed to fetch worker status');
     return res.json();
 }
+
+export async function triggerAudiobookMaster(projectId: string): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/master`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to trigger audiobook master');
+    return res.json();
+}

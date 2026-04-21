@@ -6,7 +6,7 @@
   import {
     fetchProjectDetails, pushSceneToStageD, fetchVoices, resumePipeline,
     checkResume, resetStage, fetchChapters, fetchFingerprint, fetchPreproduction,
-    analyzeProject, fetchWorkerStatus, API_BASE,
+    analyzeProject, fetchWorkerStatus, triggerAudiobookMaster, API_BASE,
     type Project, type ProjectStage, type ChapterSummary, type Fingerprint, 
     type PreproductionData
   } from '../../../lib/api';
@@ -164,6 +164,17 @@
       alert(`Errore: ${(e as Error).message}`);
     } finally {
       resuming = false;
+    }
+  };
+
+  const handleTriggerMaster = async () => {
+    if (!project) return;
+    try {
+      await triggerAudiobookMaster(project.id);
+      alert('Stage F avviato! Il file .m4b sarà disponibile a breve.');
+      await loadData(true);
+    } catch (e) {
+      alert(`Errore: ${(e as Error).message}`);
     }
   };
 
@@ -637,9 +648,9 @@
               </div>
 
               <div class="flex justify-center pt-4">
-                  <a 
-                    href={project.audiobook.url} 
-                    download 
+                  <a
+                    href={project.audiobook.url.startsWith('http') ? project.audiobook.url : `${API_BASE}${project.audiobook.url}`}
+                    download
                     class="px-8 py-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-white text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
@@ -663,7 +674,7 @@
               
               {#if project.status === 'completed' && !project.audiobook}
                  <button 
-                   onclick={() => handleResumePipeline()}
+                   onclick={handleTriggerMaster}
                    class="px-8 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20"
                  >
                     Innesca Fase F Manualmente
