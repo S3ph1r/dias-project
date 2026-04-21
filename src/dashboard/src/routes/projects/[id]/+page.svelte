@@ -6,7 +6,7 @@
   import {
     fetchProjectDetails, pushSceneToStageD, fetchVoices, resumePipeline,
     checkResume, resetStage, fetchChapters, fetchFingerprint, fetchPreproduction,
-    analyzeProject, fetchWorkerStatus,
+    analyzeProject, fetchWorkerStatus, API_BASE,
     type Project, type ProjectStage, type ChapterSummary, type Fingerprint, 
     type PreproductionData
   } from '../../../lib/api';
@@ -24,7 +24,7 @@
   let resuming = $state(false);
   let autoRefreshEnabled = $state(true);
   let refreshInterval: any;
-  let activeTab = $state<'chapters' | 'stages' | 'preproduction'>('chapters');
+  let activeTab = $state<'chapters' | 'stages' | 'preproduction' | 'audiobook'>('chapters');
   let expandedChunks = $state(new Set<string>());
   let expandedScenes = $state(new Set<string>());
   
@@ -281,6 +281,10 @@
           onclick={() => activeTab = 'stages'}
           class="px-5 py-2 rounded-lg text-sm font-bold transition-all {activeTab === 'stages' ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20' : 'text-slate-400 hover:text-white'}"
         >⚙️ Stage Details</button>
+        <button
+          onclick={() => activeTab = 'audiobook'}
+          class="px-5 py-2 rounded-lg text-sm font-bold transition-all {activeTab === 'audiobook' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-400 hover:text-white'}"
+        >🎧 Audiobook</button>
       </div>
 
       {#if project && (project.overall_progress ?? 0) < 100}
@@ -519,9 +523,6 @@
                   {#if workerStatus[stage.id] === 'running'}
                     <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" title="Worker Active"></div>
                   {/if}
-                  {#if stage.id === 'orchestrator' && workerStatus.orchestrator === 'running'}
-                     <div class="w-2 h-2 rounded-full bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.5)] animate-pulse" title="Orchestrator Active"></div>
-                  {/if}
                 </div>
               </div>
               <div class="flex items-center gap-3">
@@ -538,7 +539,6 @@
                 </span>
               </div>
             </div>
-
 
             <div class="flex-1 space-y-3 overflow-hidden">
               <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Assets ({stage.files.filter(f => stage.id !== 'stage_d' || f.endsWith('.wav')).length})</p>
@@ -578,6 +578,99 @@
             </div>
           </div>
         {/each}
+      </div>
+    {/if}
+    
+    <!-- AUDIOBOOK TAB -->
+    {#if activeTab === 'audiobook' && project}
+      <div class="space-y-6">
+        {#if project.audiobook}
+          <div class="bg-slate-900/40 backdrop-blur-xl border border-slate-800 rounded-3xl p-8 space-y-8 shadow-2xl">
+              <div class="flex items-center justify-between">
+                <div class="space-y-1">
+                    <h3 class="text-2xl font-black text-white italic uppercase tracking-tighter">Audiobook Master</h3>
+                    <p class="text-slate-500 font-mono text-xs uppercase tracking-widest">{project.audiobook.filename} ({(project.audiobook.size / (1024*1024)).toFixed(1)} MB)</p>
+                </div>
+                <div class="px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                    <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+                    Ready for listening
+                </div>
+              </div>
+
+              <!-- Premium Audio Player -->
+              <div class="bg-slate-950/80 border border-slate-800 p-8 rounded-2xl space-y-6 relative overflow-hidden group">
+                  <div class="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none"></div>
+                  
+                    <audio 
+                    controls 
+                    src={project.audiobook.url.startsWith('http') ? project.audiobook.url : `${API_BASE}${project.audiobook.url}`} 
+                    class="w-full h-12 accent-emerald-500"
+                  ></audio>
+                  
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+                      <div class="space-y-4">
+                          <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Mastering Info</p>
+                          <div class="grid grid-cols-2 gap-4">
+                              <div class="p-4 rounded-xl bg-slate-900/50 border border-slate-800/50">
+                                  <p class="text-[8px] text-slate-500 uppercase font-black">Format</p>
+                                  <p class="text-sm font-bold text-white">M4B (AAC)</p>
+                              </div>
+                              <div class="p-4 rounded-xl bg-slate-900/50 border border-slate-800/50">
+                                  <p class="text-[8px] text-slate-500 uppercase font-black">Bitrate</p>
+                                  <p class="text-sm font-bold text-white">128 kbps</p>
+                              </div>
+                          </div>
+                      </div>
+                      
+                      <div class="space-y-4">
+                          <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Chapter Markers</p>
+                          <div class="max-h-[160px] overflow-y-auto pr-2 custom-scrollbar space-y-2">
+                              {#each chapters as chapter}
+                                  <div class="flex items-center justify-between p-3 rounded-lg bg-slate-900/30 border border-white/5 hover:bg-white/5 transition-colors cursor-pointer">
+                                      <span class="text-xs text-slate-300 font-medium">{chapter.title}</span>
+                                      <span class="text-[10px] font-mono text-slate-500">{chapter.wav_count} parts</span>
+                                  </div>
+                              {/each}
+                          </div>
+                      </div>
+                  </div>
+              </div>
+
+              <div class="flex justify-center pt-4">
+                  <a 
+                    href={project.audiobook.url} 
+                    download 
+                    class="px-8 py-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-white text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                    Download Master File
+                  </a>
+              </div>
+          </div>
+        {:else}
+          <div class="py-24 text-center rounded-3xl border border-dashed border-slate-800 bg-slate-900/20 space-y-6">
+              <div class="flex justify-center">
+                  <div class="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center text-slate-600">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></svg>
+                  </div>
+              </div>
+              <div class="space-y-1">
+                  <h3 class="text-xl font-black text-white italic uppercase tracking-tighter">Mastering not ready</h3>
+                  <p class="text-slate-500 text-sm max-w-sm mx-auto">
+                    Il file audiolibro finale verrà generato automaticamente al termine della produzione vocale (Stage D).
+                  </p>
+              </div>
+              
+              {#if project.status === 'completed' && !project.audiobook}
+                 <button 
+                   onclick={() => handleResumePipeline()}
+                   class="px-8 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20"
+                 >
+                    Innesca Fase F Manualmente
+                 </button>
+              {/if}
+          </div>
+        {/if}
       </div>
     {/if}
   {/if}

@@ -133,6 +133,28 @@ DIAS esternalizza ogni prompt in file YAML in `config/prompts/`. Questo permette
 }
 ```
 
+### 5.4 Audiobook Master (Stage F Output v1.0)
+Lo Stage F aggrega tutti i WAV di uno o più capitoli in un unico file `.m4b` container.
+
+```json
+{
+  "project_id": "TITOLO_UNIFICATO",
+  "final_path": "data/projects/ID/final/ID.m4b",
+  "format": "m4b",
+  "codec": "aac",
+  "bitrate": "128k",
+  "sample_rate": 44100,
+  "chapters": [
+    {
+      "id": "chapter_001",
+      "title": "Chapter 1",
+      "start_ms": 0,
+      "end_ms": 120500
+    }
+  ]
+}
+```
+
 > Il campo `voice_duration_seconds` è il valore di verità per Stage E (Mixer). Le pause in `pause_after_ms` non sono incluse nel WAV, vanno "cucite" da Stage E.
 
 ### 5.4 MacroCue (Stage B2-Macro Output v4)

@@ -15,6 +15,12 @@ export interface Project {
     total_chunks?: number;
     overall_progress?: number;
     stages?: ProjectStage[];
+    audiobook?: {
+        url: string;
+        filename: string;
+        size: number;
+        chapters_file?: string;
+    };
 }
 
 export interface Scene {
@@ -82,7 +88,8 @@ export interface PreproductionData {
 //   produzione (nginx /dias/): '/dias' → chiamate a /dias/projects, ecc.
 //   local dev (porta 5173):    ''      → cade su VITE_API_BASE o localhost:8000
 import { base } from '$app/paths';
-export const API_BASE: string = base || (import.meta.env.VITE_API_BASE as string) || 'http://localhost:8000';
+import { browser } from '$app/environment';
+export const API_BASE: string = base || (import.meta.env.VITE_API_BASE as string) || (browser ? `http://${window.location.hostname}:8000` : 'http://127.0.0.1:8000');
 
 export async function fetchProjects(): Promise<Project[]> {
     const res = await fetch(`${API_BASE}/projects`);

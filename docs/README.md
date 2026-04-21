@@ -6,9 +6,9 @@ DIAS (Distributed Immersive Audiobook System) — pipeline Python per produrre a
 
 ## Architettura e Strategia
 
-- **[Master Blueprint v7.0](./blueprint.md)**: Pipeline completa (Stage 0-E), Stage B2 Sound-on-Demand v4.1, architettura Director/Engineer, modelli dati chiave.
-- **[Workflow Logic v10.0](./dias-workflow-logic.md)**: Flusso dati tra stage, modalità B2 (monolitica vs --split), regole AMB/SFX/STING quantitative, flag CLI.
-- **[Technical Reference](./technical-reference.md)**: Deployment, SOPS/Age, Redis internals, schemi JSON completi, vocabolario Qwen3, PAD arc rules.
+- **[Master Blueprint v7.0](./blueprint.md)**: Pipeline completa (Stage 0-E), Stage B2 Sound-on-Demand v4.1, architettura Director/Engineer.
+- **[Audiobook Master Pipeline v1.0](./dias-workflow-logic.md)**: Flusso lineare `A -> C -> D -> F` per la produzione rapida di audiolibri `.m4b`.
+- **[Technical Reference](./technical-reference.md)**: Deployment, Redis internals, Stage F Mastering, vocabolario Qwen3.
 
 ---
 
@@ -73,6 +73,7 @@ dias/
 │       ├── stage_c_scene_director.py
 │       ├── stage_d_voice_gen.py
 │       └── stage_d2_sound_factory.py
+       └── stage_f_audiobook.py
 ├── config/
 │   └── prompts/
 │       ├── stage_0/

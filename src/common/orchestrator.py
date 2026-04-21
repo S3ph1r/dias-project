@@ -37,17 +37,32 @@ class SerialOrchestrator:
             {"id": "stage_b", "name": "Semantic Analyzer", "script": "src/stages/stage_b_semantic_analyzer.py", "queue": self.config.queues.ingestion},
             {"id": "stage_c", "name": "Scene Director", "script": "src/stages/stage_c_scene_director.py", "queue": self.config.queues.semantic},
             {"id": "stage_d", "name": "Voice Generator", "script": "src/stages/stage_d_voice_gen.py", "queue": self.config.queues.voice},
-            {"id": "stage_b2", "name": "Sound Spotter", "script": "src/stages/stage_b2_spotter.py", "queue": self.config.queues.spotter},
+            # {"id": "stage_b2", "name": "Sound Spotter", "script": "src/stages/stage_b2_spotter.py", "queue": self.config.queues.spotter},
+            {"id": "stage_f", "name": "Audiobook Master", "script": "src/stages/stage_f_audiobook.py", "queue": "dias:q:0:mastering"},
         ]
         
         self.base_dir = Path(__file__).resolve().parent.parent.parent
 
     def get_total_chunks(self, stage_id: str) -> int:
         """Conta i task totali previsti in base allo stadio."""
-        if stage_id == "stage_a":
-            # Stage A elabora l'intero libro
-            return 1 # Just a flag
+        if stage_id == "stage_a" or stage_id == "stage_f":
+            # Stage A elabora l'intero libro (1 task master)
+            # Stage F masterizza tutto in 1 task
+            return 1 
         
+        # Per lo Stage D vogliamo contare le scene TOTALI previste dallo Stage C
+        if stage_id == "stage_d":
+            stage_c_path = self.persistence.project_root / "stages" / "stage_c" / "output"
+            total_scenes = 0
+            if stage_c_path.exists():
+                for sf in stage_c_path.glob("*-scenes.json"):
+                    try:
+                        with open(sf, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            total_scenes += len(data.get("scenes", []))
+                    except: pass
+            return total_scenes
+
         source_path = self.persistence.project_root / "stages" / "stage_a" / "output"
         
         # Usiamo glob standard: il project_id e' gia' normalizzato
@@ -80,6 +95,11 @@ class SerialOrchestrator:
             files = [f for f in files if self.project_id in f.name]
             return len(files)
         
+        # Per Stage F verifichiamo la build completata (M4B file)
+        if stage_id == "stage_f":
+            final_path = self.persistence.project_root / "final" / f"{self.project_id}.m4b"
+            return 1 if final_path.exists() and final_path.stat().st_size > 1000 else 0
+
         # Per Stage D misuriamo in base ai WAV
         if stage_id == "stage_d":
             files = list(target_path.glob("*.wav"))
@@ -144,7 +164,7 @@ class SerialOrchestrator:
             return
 
         # Identifica sorgente (indirizzo precedente)
-        source_map = {"stage_b": "stage_a", "stage_c": "stage_b", "stage_d": "stage_c", "stage_b2": "stage_c"}
+        source_map = {"stage_b": "stage_a", "stage_c": "stage_b", "stage_d": "stage_c", "stage_f": "stage_d"}
         source_stage = source_map.get(stage_id)
         if not source_stage: return
         
@@ -232,8 +252,9 @@ class SerialOrchestrator:
                         scene_id = s_match.group(1)
                         
                         # 4. Verifica se l'audio/json esiste già in target
-                        search_pattern = f"{self.project_id}-*-{full_label}-scene-{scene_id}*.json"
-                        if not list(target_path.glob(search_pattern)):
+                        # Cerchiamo il file WAV che è la prova finale del completamento
+                        wav_pattern = f"{self.project_id}-{full_label}-scene-{scene_id}.wav"
+                        if not (target_path / wav_pattern).exists():
                             with open(ms, 'r', encoding='utf-8') as f:
                                 data = json.load(f)
                             
@@ -242,6 +263,18 @@ class SerialOrchestrator:
                                 
                             self.redis.push_to_queue(queue_name, data)
                             count += 1
+
+        # --- LOGICA STAGE F (Audiobook Master) ---
+        elif stage_id == "stage_f":
+            final_path = self.persistence.project_root / "final" / f"{self.project_id}.m4b"
+            if not final_path.exists() or final_path.stat().st_size < 1000:
+                message = {
+                    "project_id": self.project_id,
+                    "action": "build_m4b",
+                    "timestamp": datetime.datetime.now().isoformat()
+                }
+                self.redis.push_to_queue(queue_name, message)
+                count += 1
 
         # --- LOGICA STAGE B2 (Spotter) ---
         elif stage_id == "stage_b2":

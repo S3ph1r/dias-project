@@ -115,4 +115,22 @@ Vedi tabella completa in `technical-reference.md` § 7.
 
 ---
 
-*Ultimo aggiornamento: 17 Aprile 2026 — v3.0: aggiunto standard sound design BBC/Star Wars, regole quantitative AMB/SFX/STING con durate e limiti, PAD ducking depth e fade speed, vocabolario Qwen3.*
+## 7. Standard Audiobook Master (Stage F)
+
+Il file finale `.m4b` deve rispettare i seguenti parametri per garantire compatibilità universale e alta fedeltà.
+
+| Parametro | Valore | Note |
+| :--- | :--- | :--- |
+| **Container** | **.m4b** | Supporto nativo per metadati capitoli e segnalibri. |
+| **Codec** | **AAC (LC)** | Bilanciamento ottimale compressione/qualità. |
+| **Bitrate** | **128 kbps** | Trasparente per la sola voce e AMB leggera. |
+| **Sample Rate**| **44100 Hz** | Standard CD Quality. |
+| **MIME Type** | **audio/mp4** | Mapping obbligatorio per player web/dashboard. |
+| **Chapters** | **FUB (Fixed)** | Marcatori capitoli basati sulla Scene Grid (Stage C). |
+
+### 7.1 Gestione delle Pause nel Master
+A differenza del mix cinematico (Stage E), nel Master Audiobook le pause tra scene sono inserite forzatamente in fase di concatenazione basandosi sul valore `pause_after_ms` dello Stage C. Questo garantisce il ritmo della lettura "ad alta voce".
+
+---
+
+*Ultimo aggiornamento: 21 Aprile 2026 — v4.0: Integrato sistema Audiobook-Only, Stage F Mastering, standard M4B e Chaptering automatico.*

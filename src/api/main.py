@@ -12,6 +12,10 @@ import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import datetime
+import mimetypes
+
+# Assicuriamoci che il server riconosca i file .m4b come audio
+mimetypes.add_type('audio/mp4', '.m4b')
 
 from src.common.config import get_config
 from src.common.redis_factory import get_redis_client
@@ -58,11 +62,12 @@ async def get_workers_status():
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Instanziazione Persistence per normalizzazione e gestione file
-persistence = DiasPersistence(base_path=str(BASE_DIR / "data"))
+persistence = DiasPersistence()
+DATA_DIR = persistence.base_path
 
 # Mount static projects directory
 # This allows serving audio from /static/projects/{project_id}/stages/stage_d/output/{filename}
-projects_dir = BASE_DIR / "data" / "projects"
+projects_dir = DATA_DIR / "projects"
 if not projects_dir.exists():
     projects_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static/projects", StaticFiles(directory=str(projects_dir)), name="projects")
@@ -183,7 +188,7 @@ async def list_projects() -> List[Dict[str, Any]]:
     """
     List all projects from data/projects/
     """
-    projects_dir = BASE_DIR / "data" / "projects"
+    projects_dir = DATA_DIR / "projects"
     projects = []
     
     if projects_dir.exists():
@@ -225,7 +230,7 @@ async def upload_project(background_tasks: BackgroundTasks, file: UploadFile = F
     """
     # 1. Normalize ID using persistence standard
     project_id = persistence.normalize_id(file.filename)
-    project_dir = BASE_DIR / "data" / "projects" / project_id
+    project_dir = DATA_DIR / "projects" / project_id
     
     project_dir.mkdir(parents=True, exist_ok=True)
     source_dir = project_dir / "source"
@@ -265,7 +270,7 @@ def get_project_dir(project_id: str) -> Path:
     Helper to find the project directory case-insensitively and with flexible normalization.
     """
     # 1. Try case-insensitive search in projects folder (most robust)
-    projects_root = BASE_DIR / "data" / "projects"
+    projects_root = DATA_DIR / "projects"
     if projects_root.exists():
         for d in projects_root.iterdir():
             if d.is_dir():
@@ -277,7 +282,7 @@ def get_project_dir(project_id: str) -> Path:
                     return d
                     
     # 2. Fallback to direct path
-    return BASE_DIR / "data" / "projects" / persistence.normalize_id(project_id)
+    return DATA_DIR / "projects" / persistence.normalize_id(project_id)
 
 @app.post("/projects/{project_id}/analyze")
 async def analyze_project(project_id: str):
@@ -535,6 +540,19 @@ async def get_project_status(project_id: str) -> Dict[str, Any]:
     if project_status == "completed":
         progress_pct = 100.0
 
+    # Audiobook Master Check
+    final_dir = project_dir / "final"
+    audiobook_info = None
+    if final_dir.exists():
+        m4b_files = sorted(list(final_dir.glob("*.m4b")))
+        if m4b_files:
+            audiobook_info = {
+                "url": f"{APP_BASE_PATH}/static/projects/{actual_project_id}/final/{m4b_files[0].name}",
+                "filename": m4b_files[0].name,
+                "size": m4b_files[0].stat().st_size,
+                "chapters_file": f"{APP_BASE_PATH}/static/projects/{actual_project_id}/final/metadata.txt"
+            }
+
     return {
         "project_id": actual_project_id,
         "name": actual_project_id.replace("-", " "),
@@ -542,7 +560,8 @@ async def get_project_status(project_id: str) -> Dict[str, Any]:
         "total_chunks": total_chunks,
         "overall_progress": round(progress_pct, 2),
         "active_stage": active_stage,
-        "stages": detailed_stages
+        "stages": detailed_stages,
+        "audiobook": audiobook_info
     }
 
 @app.get("/info/quota")
@@ -628,7 +647,7 @@ async def reset_project_stage(project_id: str, stage_id: str):
         
         prev_stage = source_map.get(stage_id)
         if prev_stage:
-            source_path = BASE_DIR / "data" / prev_stage / "output" / clean_title
+            source_path = DATA_DIR / prev_stage / "output" / clean_title
             if source_path.exists():
                 count = 0
                 for file in source_path.glob("*.json"):
@@ -658,7 +677,7 @@ async def check_resume_status(project_id: str):
     """
     try:
         clean_id = persistence.normalize_id(project_id)
-        source_dir = BASE_DIR / "data" / "projects" / clean_id / "stages" / "stage_c" / "output"
+        source_dir = DATA_DIR / "projects" / clean_id / "stages" / "stage_c" / "output"
         
         if not source_dir.exists():
             return {"status": "no_source", "voices": {}}
@@ -735,7 +754,7 @@ async def push_scene_to_stage_d(project_id: str, payload: Dict[str, str]):
     project_id = persistence.normalize_id(project_id)
     
     # Nuova logica Sprint 4: Path isolato per progetto
-    scene_path = BASE_DIR / "data" / "projects" / project_id / "stages" / "stage_c" / "output" / scene_file_name
+    scene_path = DATA_DIR / "projects" / project_id / "stages" / "stage_c" / "output" / scene_file_name
     
     if not scene_path.exists():
         # Cerca senza prefisso project_id nel nome file se necessario (per compatibilità nomi puliti)
@@ -872,7 +891,7 @@ async def get_project_chapters(project_id: str):
     """
     Get all chapters for a project by scanning stage_c output in the project folder.
     """
-    stage_c_dir = BASE_DIR / "data" / "projects" / project_id / "stages" / "stage_c" / "output"
+    stage_c_dir = DATA_DIR / "projects" / project_id / "stages" / "stage_c" / "output"
     if not stage_c_dir.exists():
         return []
     
@@ -921,8 +940,8 @@ async def get_chapter_scenes(project_id: str, chapter_id: str):
     """
     Get all scenes for a specific chapter from the project folder.
     """
-    stage_c_dir = BASE_DIR / "data" / "projects" / project_id / "stages" / "stage_c" / "output"
-    stage_d_dir = BASE_DIR / "data" / "projects" / project_id / "stages" / "stage_d" / "output"
+    stage_c_dir = DATA_DIR / "projects" / project_id / "stages" / "stage_c" / "output"
+    stage_d_dir = DATA_DIR / "projects" / project_id / "stages" / "stage_d" / "output"
     
     scenes = []
     # Pattern: {project_id}-chunk-{chapter_id}-micro-*-scenes.json
@@ -967,7 +986,7 @@ async def get_scene_metrics(project_id: str, scene_id: str, chapter_id: Optional
     """
     Calculate audio metrics for a scene.
     """
-    stage_d_dir = BASE_DIR / "data" / "projects" / project_id / "stages" / "stage_d" / "output"
+    stage_d_dir = DATA_DIR / "projects" / project_id / "stages" / "stage_d" / "output"
     
     if "-scene-" in scene_id:
         target_scene_idx = scene_id.split("-scene-")[-1]
@@ -995,7 +1014,7 @@ async def retry_scene(project_id: str, scene_id: str, payload: Dict[str, Any] = 
     """
     Re-queue a scene for Stage D (Voice Gen).
     """
-    stage_c_dir = BASE_DIR / "data" / "projects" / project_id / "stages" / "stage_c" / "output"
+    stage_c_dir = DATA_DIR / "projects" / project_id / "stages" / "stage_c" / "output"
     
     if "-scene-" in scene_id:
         scene_file = stage_c_dir / f"{scene_id}.json"
