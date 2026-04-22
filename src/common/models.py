@@ -72,6 +72,9 @@ class BlockAnalysis(BaseModel):
     tension: float = Field(ge=0.0, le=1.0)
     primary_emotion: str = "neutro"
     secondary_emotion: Optional[str] = None
+    subtext: Optional[str] = None            # New in v1.2
+    narrative_arc: Optional[str] = None      # New in v1.2
+    narrator_base_tone: Optional[str] = None # New in v1.2
     setting: Optional[str] = None
     has_dialogue: bool = False
     audio_cues: List[str] = Field(default_factory=list)

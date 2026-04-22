@@ -397,6 +397,9 @@ class StageBSemanticAnalyzer(BaseStage):
                 tension=block_analysis_data.get('tension', 0.5),
                 primary_emotion=block_analysis_data.get('primary_emotion', 'neutro'),
                 secondary_emotion=block_analysis_data.get('secondary_emotion'),
+                subtext=block_analysis_data.get('subtext'),
+                narrative_arc=block_analysis_data.get('narrative_arc'),
+                narrator_base_tone=block_analysis_data.get('narrator_base_tone'),
                 setting=block_analysis_data.get('setting'),
                 has_dialogue=block_analysis_data.get('has_dialogue', False),
                 audio_cues=block_analysis_data.get('audio_cues', [])
@@ -476,6 +479,9 @@ class StageBSemanticAnalyzer(BaseStage):
                 "block_analysis": {
                     "primary_emotion": macro_analysis.get("block_analysis", {}).get("primary_emotion", "neutro"),
                     "secondary_emotion": macro_analysis.get("block_analysis", {}).get("secondary_emotion"),
+                    "subtext": macro_analysis.get("block_analysis", {}).get("subtext"),
+                    "narrative_arc": macro_analysis.get("block_analysis", {}).get("narrative_arc"),
+                    "narrator_base_tone": macro_analysis.get("block_analysis", {}).get("narrator_base_tone"),
                     "setting": macro_analysis.get("block_analysis", {}).get("setting"),
                     "valence": macro_analysis.get("block_analysis", {}).get("valence", 0.5),
                     "arousal": macro_analysis.get("block_analysis", {}).get("arousal", 0.5),
