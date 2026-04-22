@@ -6,7 +6,8 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 # --- CONFIGURATION ---
-BASE_DIR = Path("/home/Projects/NH-Mini/sviluppi/dias")
+# Calcolo dinamico della BASE_DIR
+BASE_DIR = Path(__file__).resolve().parent.parent
 STAGE_D_DIR = BASE_DIR / "data" / "stage_d" / "output"
 
 def download_file(url, dest_path):

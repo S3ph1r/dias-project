@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -28,7 +28,9 @@ logger = get_logger("api_hub")
 
 app = FastAPI(title="DIAS API Hub", version="1.0.0")
 
-@app.get("/system/workers")
+api_router = APIRouter()
+
+@api_router.get("/system/workers")
 async def get_workers_status():
     """
     Check status of all DIAS workers and Orchestrator.
@@ -72,12 +74,12 @@ if not projects_dir.exists():
     projects_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static/projects", StaticFiles(directory=str(projects_dir)), name="projects")
 
-# ARIA Voice Assets for previews
-aria_assets_path = Path("/home/Projects/NH-Mini/sviluppi/ARIA/data/assets")
+# ARIA Voice Assets for previews (Sibling directory check)
+aria_assets_path = BASE_DIR.parent / "ARIA" / "data" / "assets"
 if aria_assets_path.exists():
     app.mount("/aria-assets", StaticFiles(directory=str(aria_assets_path)), name="aria-assets")
 
-aria_legacy_voices_path = Path("/home/Projects/NH-Mini/sviluppi/ARIA/data/voices")
+aria_legacy_voices_path = BASE_DIR.parent / "ARIA" / "data" / "voices"
 if aria_legacy_voices_path.exists():
     app.mount("/aria-assets/legacy_voices", StaticFiles(directory=str(aria_legacy_voices_path)), name="aria-legacy-voices")
 
@@ -158,7 +160,7 @@ def extract_text_task(file_path: Path, txt_path: Path, project_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
-@app.get("/health")
+@api_router.get("/health")
 async def root():
     return {
         "status": "online",
@@ -166,7 +168,7 @@ async def root():
         "service": "DIAS API Hub"
     }
 
-@app.get("/aria/nodes")
+@api_router.get("/aria/nodes")
 async def get_aria_nodes() -> List[Dict[str, Any]]:
     """
     Get all active ARIA nodes by searching for heartbeat keys in Redis.
@@ -183,7 +185,7 @@ async def get_aria_nodes() -> List[Dict[str, Any]]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching ARIA nodes: {str(e)}")
 
-@app.get("/projects")
+@api_router.get("/projects")
 async def list_projects() -> List[Dict[str, Any]]:
     """
     List all projects from data/projects/
@@ -222,7 +224,7 @@ async def list_projects() -> List[Dict[str, Any]]:
     # Sort by last modified
     return sorted(projects, key=lambda x: x["last_modified"], reverse=True)
 
-@app.post("/projects/upload")
+@api_router.post("/projects/upload")
 async def upload_project(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     """
     Upload a new project file (PDF, EPUB, DOCX), create directory,
@@ -284,7 +286,7 @@ def get_project_dir(project_id: str) -> Path:
     # 2. Fallback to direct path
     return DATA_DIR / "projects" / persistence.normalize_id(project_id)
 
-@app.post("/projects/{project_id}/analyze")
+@api_router.post("/projects/{project_id}/analyze")
 async def analyze_project(project_id: str):
     """
     Manually trigger Stage 0 Intelligence analysis for a project.
@@ -368,7 +370,7 @@ async def analyze_project(project_id: str):
         "message": "Intelligence Analysis triggered automatically."
     }
 
-@app.get("/projects/{project_id}/fingerprint")
+@api_router.get("/projects/{project_id}/fingerprint")
 async def get_project_fingerprint(project_id: str):
     """
     Return the book intelligence fingerprint (output of Stage 0).
@@ -394,7 +396,7 @@ async def get_project_fingerprint(project_id: str):
         
     return data
 
-@app.get("/projects/{project_id}/preproduction")
+@api_router.get("/projects/{project_id}/preproduction")
 async def get_project_preproduction(project_id: str):
     """
     Return the pre-production configuration (casting assignments, etc.).
@@ -410,7 +412,7 @@ async def get_project_preproduction(project_id: str):
     with open(path) as f:
         return json.load(f)
 
-@app.post("/projects/{project_id}/preproduction")
+@api_router.post("/projects/{project_id}/preproduction")
 async def save_project_preproduction(project_id: str, data: Dict[str, Any]):
     """
     Save the pre-production configuration by merging with existing data.
@@ -463,7 +465,7 @@ STAGE_MAP = {
     "stage_g": "Mastering Engine"
 }
 
-@app.get("/projects/{project_id}")
+@api_router.get("/projects/{project_id}")
 async def get_project_status(project_id: str) -> Dict[str, Any]:
     """
     Detailed progress for a specific book.
@@ -564,7 +566,7 @@ async def get_project_status(project_id: str) -> Dict[str, Any]:
         "audiobook": audiobook_info
     }
 
-@app.get("/info/quota")
+@api_router.get("/info/quota")
 async def get_quota_info() -> Dict[str, Any]:
     """Returns the current ARIA/Gemini API quota usage from Redis."""
     try:
@@ -585,7 +587,7 @@ async def get_quota_info() -> Dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/projects/{project_id}/stages/{stage_id}")
+@api_router.delete("/projects/{project_id}/stages/{stage_id}")
 async def reset_project_stage(project_id: str, stage_id: str):
     """
     Resets a specific stage for a project.
@@ -669,7 +671,7 @@ async def reset_project_stage(project_id: str, stage_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/projects/{project_id}/resume/check")
+@api_router.get("/projects/{project_id}/resume/check")
 async def check_resume_status(project_id: str):
     """
     Scans Stage C outputs to detect which voices are already assigned.
@@ -701,7 +703,7 @@ async def check_resume_status(project_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/projects/{project_id}/resume")
+@api_router.post("/projects/{project_id}/resume")
 async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = None):
     """
     Scans the entire pipeline for the project and enqueues missing tasks.
@@ -739,7 +741,7 @@ async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = Non
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/projects/{project_id}/master")
+@api_router.post("/projects/{project_id}/master")
 async def trigger_audiobook_master(project_id: str):
     """
     Avvia Stage F (Audiobook Mastering) direttamente per il progetto.
@@ -764,7 +766,7 @@ async def trigger_audiobook_master(project_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/projects/{project_id}/push_scene")
+@api_router.post("/projects/{project_id}/push_scene")
 async def push_scene_to_stage_d(project_id: str, payload: Dict[str, str]):
     """
     Manually pushes a specific Stage C scene JSON to the Stage D queue.
@@ -810,7 +812,7 @@ async def push_scene_to_stage_d(project_id: str, payload: Dict[str, str]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error pushing scene: {str(e)}")
 
-@app.get("/aria/registry")
+@api_router.get("/aria/registry")
 async def get_aria_registry() -> Dict[str, Any]:
     """
     Returns the full ARIA Master Registry from Redis.
@@ -827,7 +829,7 @@ async def get_aria_registry() -> Dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/info/voices")
+@api_router.get("/info/voices")
 async def get_available_voices() -> Dict[str, Any]:
     """
     Aggregates available voices. 
@@ -865,7 +867,7 @@ async def get_available_voices() -> Dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error aggregating voices: {str(e)}")
 
-@app.post("/projects/run")
+@api_router.post("/projects/run")
 async def run_project(payload: Dict[str, Any]):
     """
     Triggers the execution of a new project or resumes an existing one.
@@ -886,7 +888,7 @@ async def run_project(payload: Dict[str, Any]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error starting project: {str(e)}")
 
-@app.post("/projects/{project_id}/control")
+@api_router.post("/projects/{project_id}/control")
 async def control_project(project_id: str, payload: Dict[str, str]):
     """
     Controls the flow of a project using Redis semaphores.
@@ -911,7 +913,7 @@ async def control_project(project_id: str, payload: Dict[str, str]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error applying control: {str(e)}")
 
-@app.get("/projects/{project_id}/chapters")
+@api_router.get("/projects/{project_id}/chapters")
 async def get_project_chapters(project_id: str):
     """
     Get all chapters for a project by scanning stage_c output in the project folder.
@@ -960,7 +962,7 @@ async def get_project_chapters(project_id: str):
         
     return sorted(list(chapters.values()), key=lambda x: x["id"])
 
-@app.get("/projects/{project_id}/chapters/{chapter_id}/scenes")
+@api_router.get("/projects/{project_id}/chapters/{chapter_id}/scenes")
 async def get_chapter_scenes(project_id: str, chapter_id: str):
     """
     Get all scenes for a specific chapter from the project folder.
@@ -1006,7 +1008,7 @@ async def get_chapter_scenes(project_id: str, chapter_id: str):
         
     return scenes
 
-@app.get("/projects/{project_id}/scenes/{scene_id}/metrics")
+@api_router.get("/projects/{project_id}/scenes/{scene_id}/metrics")
 async def get_scene_metrics(project_id: str, scene_id: str, chapter_id: Optional[str] = None):
     """
     Calculate audio metrics for a scene.
@@ -1034,7 +1036,7 @@ async def get_scene_metrics(project_id: str, scene_id: str, chapter_id: Optional
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/projects/{project_id}/scenes/{scene_id}/retry")
+@api_router.post("/projects/{project_id}/scenes/{scene_id}/retry")
 async def retry_scene(project_id: str, scene_id: str, payload: Dict[str, Any] = None):
     """
     Re-queue a scene for Stage D (Voice Gen).
@@ -1068,6 +1070,9 @@ async def retry_scene(project_id: str, scene_id: str, payload: Dict[str, Any] = 
         return {"status": "success", "message": f"Scene {scene_id} re-queued"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+app.include_router(api_router, prefix="/api")
 
 # ─── Svelte static build (deve essere registrato DOPO tutte le API routes) ───
 # Build generata con: PUBLIC_BASE_PATH=/dias npm run build

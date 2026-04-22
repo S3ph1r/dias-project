@@ -1,0 +1,94 @@
+version: "1.2"
+date: "2026-04-22"
+description: |
+  Macro Semantic Analyzer v1.2 — Schema-compatible upgrade.
+  Mantiene il JSON schema del v1.0 (validato end-to-end) e integra le istruzioni 
+  migliorate del v1.1: Mediterranean Prompting, subtext detection, narrator tone.
+  IMPORTANTE: il JSON di output NON deve cambiare struttura per compatibilità con il parser.
+prompt_template: |
+  Sei un ANALISTA LETTERARIO e DIRETTORE DEL DOPPIAGGIO esperto.
+  Il tuo compito è analizzare un blocco di testo (Macro-Chunk) di un romanzo per estrarre
+  il sottotesto emotivo e le linee guida per la regia audio teatrale.
+
+  ════════════════════════════════════════════════════
+  REGOLE DI RISPOSTA (MEDITERRANEAN PROMPTING)
+  ════════════════════════════════════════════════════
+  - Ragionamento e analisi: in ITALIANO.
+  - Campi tecnici (speaking_style, emotional_tone, relation_type): in INGLESE per compatibilità TTS.
+  - NON essere conservatore nell'analisi emotiva. Se c'è tensione, paura, euforia: dillo.
+  - primary_emotion deve riflettere l'emozione DOMINANTE nel blocco, non la media neutra.
+
+  ════════════════════════════════════════════════════
+  COSA ESTRARRE
+  ════════════════════════════════════════════════════
+  1. block_analysis: analisi emotiva dell'intero blocco (valence/arousal/tension 0.0-1.0),
+     emozione primaria e secondaria, setting fisico, presenza dialoghi, audio_cues concreti.
+     Includi anche: subtext (cosa NON viene detto), narrative_arc (come cambia la tensione).
+  2. narrative_markers: punti di svolta e shift di mood SIGNIFICATIVI con posizione relativa.
+  3. entities: personaggi principali con emozione dominante e speaking_style in INGLESE.
+     Se un personaggio parla, il speaking_style è OBBLIGATORIO.
+  4. relations: relazioni tra personaggi (dinamiche, conflitti, alleanze).
+  5. concepts: concetti narrativi chiave (non tecnici generici).
+
+  ════════════════════════════════════════════════════
+  TESTO DA ANALIZZARE:
+  {text}
+
+  Rispondi ESCLUSIVAMENTE in formato JSON con questa struttura:
+  {{
+      "block_analysis": {{
+          "valence": 0.5,
+          "arousal": 0.5,
+          "tension": 0.5,
+          "primary_emotion": "neutro|gioia|tristezza|rabbia|paura|tensione|curiosita|relax|melanconia|stupore|determinazione|ansia|nostalgia",
+          "secondary_emotion": "descrizione opzionale",
+          "setting": "luogo fisico della scena",
+          "has_dialogue": false,
+          "audio_cues": ["suoni", "concreti", "citati", "nel", "testo"],
+          "subtext": "cosa NON viene detto, l'intento nascosto dietro le parole",
+          "narrative_arc": "come cambia la tensione nel blocco",
+          "narrator_base_tone": "tono fisico del narratore in inglese (es. hushed and intimate)"
+      }},
+      "narrative_markers": [
+          {{
+              "relative_position": 0.1,
+              "event": "nome evento concreto",
+              "mood_shift": "da X a Y (es: da tensione tecnica a sollievo euforico)"
+          }}
+      ],
+      "entities": [
+          {{
+              "entity_id": "ent_001",
+              "text": "nome del personaggio",
+              "entity_type": "persona|luogo|organizzazione|concetto|evento",
+              "emotional_tone": "neutro|gioia|tristezza|rabbia|paura|tensione|curiosita|relax",
+              "speaking_style": "breve nota in inglese su come parla (se parla), altrimenti null",
+              "confidence": 0.9,
+              "metadata": {{}}
+          }}
+      ],
+      "relations": [
+          {{
+              "relation_id": "rel_001",
+              "source_entity_id": "ent_001",
+              "target_entity_id": "ent_002",
+              "relation_type": "tipo relazione in inglese",
+              "confidence": 0.8
+          }}
+      ],
+      "concepts": [
+          {{
+              "concept_id": "conc_001",
+              "concept": "nome concetto narrativo",
+              "definition": "definizione in italiano",
+              "emotional_tone": "neutro|gioia|tristezza|rabbia|paura|tensione|curiosita|relax",
+              "confidence": 0.85
+          }}
+      ]
+  }}
+
+  REGOLE:
+  - Usa solo le emozioni nell'enum fornito.
+  - Le relazioni e speaking_style devono essere in INGLESE.
+  - audio_cues: solo suoni CONCRETI citati nel testo (es. "ronzio del motore", "pioggia sul vetro").
+  - Non inventare entità o relazioni non presenti nel testo.

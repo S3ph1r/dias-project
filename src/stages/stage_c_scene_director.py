@@ -142,33 +142,40 @@ class TextDirector:
         block_analysis = (macro_analysis or {}).get("block_analysis", {})
         secondary_emotion = block_analysis.get("secondary_emotion", "")
 
-        # narrator_base_tone: derivato dalla primary_emotion e secondary_emotion
-        narrator_base_tone_map = {
-            "tensione":       "Low, unhurried chest voice. The narrator speaks with exhausted clarity — detached but not cold, like someone describing a world they know too well.",
-            "tristezza":      "Soft, low chest voice. Measured pace with slight weight on stressed syllables. No warmth — intimate but restrained.",
-            "gioia":          "Lighter chest voice, moderate pace. Slightly open mouth quality. Conversational but controlled.",
-            "paura":          "Hushed, tight chest voice. Short breath. Words clipped at the edges. Very slow.",
-            "rabbia":         "Clipped, low voice. Hard consonants. Fast but deliberate. Jaw barely moving.",
-            "curiosità":      "Slightly rising intonation at end of phrases. Mid-chest register. Moderate pace.",
-            "determinazione": "Chest voice, firm and forward. Consistent pace without hesitation. No emotional colour.",
-        }
-        narrator_base_tone = narrator_base_tone_map.get(
-            emotion.lower(),
-            "Low, unhurried chest voice. Measured and detached."
-        )
+        # narrator_base_tone: legge da Stage B se disponibile, altrimenti usa mappa interna
+        narrator_base_tone = block_analysis.get("narrator_base_tone", "")
+        if not narrator_base_tone:
+            narrator_base_tone_map = {
+                "tensione":       "Low, unhurried chest voice. The narrator speaks with exhausted clarity — detached but not cold, like someone describing a world they know too well.",
+                "tristezza":      "Soft, low chest voice. Measured pace with slight weight on stressed syllables. No warmth — intimate but restrained.",
+                "gioia":          "Lighter chest voice, moderate pace. Slightly open mouth quality. Conversational but controlled.",
+                "paura":          "Hushed, tight chest voice. Short breath. Words clipped at the edges. Very slow.",
+                "rabbia":         "Clipped, low voice. Hard consonants. Fast but deliberate. Jaw barely moving.",
+                "curiosità":      "Slightly rising intonation at end of phrases. Mid-chest register. Moderate pace.",
+                "determinazione": "Chest voice, firm and forward. Consistent pace without hesitation. No emotional colour.",
+            }
+            narrator_base_tone = narrator_base_tone_map.get(
+                emotion.lower(),
+                "Low, unhurried chest voice. Measured and detached."
+            )
 
-        # narrative_arc: formattato come lista leggibile da Gemini
+        # subtext: legge da Stage B se disponibile
+        subtext = block_analysis.get("subtext", "")
+
+        # narrative_arc: legge da Stage B se disponibile, altrimenti costruisce dai markers
+        narrative_arc = block_analysis.get("narrative_arc", "")
         narrative_markers = (macro_analysis or {}).get("narrative_markers", [])
-        if narrative_markers:
-            arc_lines = []
-            for nm in narrative_markers:
-                pos_pct = int(nm.get("relative_position", 0) * 100)
-                event = nm.get("event", "")
-                shift = nm.get("mood_shift", "")
-                arc_lines.append(f"  - At ~{pos_pct}%: {event} → Shift: {shift}")
-            narrative_arc = "\n".join(arc_lines)
-        else:
-            narrative_arc = f"  - Whole block: {emotion_description}"
+        if not narrative_arc:
+            if narrative_markers:
+                arc_lines = []
+                for nm in narrative_markers:
+                    pos_pct = int(nm.get("relative_position", 0) * 100)
+                    event = nm.get("event", "")
+                    shift = nm.get("mood_shift", "")
+                    arc_lines.append(f"  - At ~{pos_pct}%: {event} → Shift: {shift}")
+                narrative_arc = "\n".join(arc_lines)
+            else:
+                narrative_arc = f"  - Whole block: {emotion_description}"
 
         # entities_speaking_styles: formattato per Gemini
         entities = (macro_analysis or {}).get("entities", [])
@@ -182,6 +189,28 @@ class TextDirector:
             entities_speaking_styles = "\n".join(ent_lines)
         else:
             entities_speaking_styles = "  - No named entities in this block."
+
+        # characters_vocal_profiles: from preproduction.json dossier (physical voice anchors)
+        try:
+            persistence = DiasPersistence(project_id=project_id)
+            preproduction_path = persistence.project_root / "stages" / "stage_0" / "output" / "preproduction.json"
+            if preproduction_path.exists():
+                with open(preproduction_path, "r", encoding="utf-8") as f:
+                    preproduction_data = json.load(f)
+                dossier = preproduction_data.get("characters_dossier", [])
+                if dossier:
+                    vp_lines = [
+                        f"  - {c.get('name', '?')}: \"{c.get('vocal_profile', '')}\""
+                        for c in dossier if c.get("vocal_profile")
+                    ]
+                    characters_vocal_profiles = "\n".join(vp_lines) if vp_lines else "  - No vocal profiles in dossier."
+                else:
+                    characters_vocal_profiles = "  - No character dossier available."
+            else:
+                characters_vocal_profiles = "  - Preproduction data not available."
+        except Exception as e:
+            self.logger.warning(f"Could not load characters_vocal_profiles: {e}")
+            characters_vocal_profiles = "  - Could not load vocal profiles."
 
         # character_relationships: formattato per Gemini
         relations = (macro_analysis or {}).get("relations", [])
@@ -204,7 +233,9 @@ class TextDirector:
             .replace("{secondary_emotion}", secondary_emotion)
             .replace("{narrator_base_tone}", narrator_base_tone)
             .replace("{narrative_arc}", narrative_arc)
+            .replace("{subtext}", subtext)
             .replace("{entities_speaking_styles}", entities_speaking_styles)
+            .replace("{characters_vocal_profiles}", characters_vocal_profiles)
             .replace("{character_relationships}", character_relationships)
             .replace("{text_content}", text_content)
         )

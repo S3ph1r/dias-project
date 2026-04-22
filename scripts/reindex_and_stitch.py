@@ -8,7 +8,8 @@ import re
 
 # --- CONFIGURATION ---
 BOOK_ID = "Cronache-del-Silicio"
-BASE_DIR = Path("/home/Projects/NH-Mini/sviluppi/dias")
+# Calcolo dinamico della BASE_DIR
+BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 STAGE_C_DIR = DATA_DIR / "stage_c" / "output"
 STAGE_D_DIR = DATA_DIR / "stage_d" / "output"

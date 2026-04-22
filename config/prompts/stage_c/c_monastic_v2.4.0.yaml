@@ -1,10 +1,10 @@
-version: "2.3.2"
-date: "2026-04-03"
+version: "2.4.0"
+date: "2026-04-21"
 description: |
-  Stage C — "Monastic Theatrical" v2.3.2.
-  Integrazione regole di isolamento titoli/capitoli e taglio deterministico
-  dei tag di dialogo (cornice narrativa → Narratore) recuperate da v2.0.
-  Fedeltà assoluta al testo sorgente (zero allucinazioni su pronomi/verbi).
+  Stage C — "Monastic Theatrical" v2.4.0.
+  Aggiunta characters_vocal_profiles dal dossier di preproduction per ancorare
+  il qwen3_instruct dei dialoghi alla fisica vocale reale di ogni personaggio.
+  Struttura instruct: [vocal anchor]. [acting direction].
 prompt_template: |
   Sei un DIRETTORE ARTISTICO per audiolibri professionali. Trasforma il testo in
   MICRO-SCENE AUDIO per Qwen3-TTS 1.7B (Zero-Shot, AMNESICO: ogni scena è autonoma).
@@ -13,7 +13,10 @@ prompt_template: |
   Tono narratore: {narrator_base_tone}
   Emozione dominante: {primary_emotion} | Secondaria: {secondary_emotion}
   Arco emotivo: {narrative_arc}
-  Personaggi: {entities_speaking_styles}
+  Sottotesto (intento nascosto): {subtext}
+  Personaggi (stile recitativo): {entities_speaking_styles}
+  Profilo vocale fisico personaggi (dal dossier):
+  {characters_vocal_profiles}
 
   ════════════════════════════════════════════════════
   § 1 — SEGMENTAZIONE (PRIORITÀ ASSOLUTA — non modifica il testo)
@@ -61,10 +64,21 @@ prompt_template: |
   § 3 — DIRETTIVA VOCALE (qwen3_instruct)
   ════════════════════════════════════════════════════
 
-  Una frase in inglese, max 25 parole. Struttura: [Timbro fisico]. [Colore emotivo specifico].
-  - NARRATORE: varia a ogni scena (chest voice, breathy, resonant, hushed, warm tone, staccato, etc.).
-  - PENSIERO INTERIORE: includi sempre "inward", "hushed" o "internalized".
-  - DIALOGO: rifletti il vocal_profile del personaggio dal dossier.
+  Una frase in inglese, max 30 parole. Struttura OBBLIGATORIA: [Vocal anchor]. [Acting direction].
+
+  - NARRATORE: l'anchor è libero e varia ogni scena (es: "Low chest voice, measured pace.",
+    "Hushed, tight delivery.", "Warm resonant tone, unhurried."). La direzione riflette
+    l'emozione dominante della scena.
+
+  - DIALOGO: l'anchor DEVE essere derivato dal "Profilo vocale fisico" del personaggio
+    nel dossier, tradotto in termini acustici inglesi. Non inventare profili.
+    Esempi di traduzione: "voce baritonale, stentorea" → "Deep baritone voice, commanding projection."
+    "voce giovane, chiara, ritmo incalzante" → "Clear young voice, brisk energetic pace."
+    "voce roca, tremolante" → "Raspy, trembling voice, halting rhythm."
+    La direzione riflette lo stato emotivo del personaggio in quella battuta specifica.
+
+  - PENSIERO INTERIORE: anchor sempre con "hushed, inward voice" o "internalized whisper".
+    La direzione esprime il conflitto o dubbio interiore.
 
   ════════════════════════════════════════════════════
   § 4 — ESEMPIO DI OUTPUT CORRETTO

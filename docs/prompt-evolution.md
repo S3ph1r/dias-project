@@ -25,6 +25,7 @@ L'obiettivo dello Stage B è estrarre il "mood" macroscopico del testo per guida
 | **v1.0 (Base)** | Emozioni base | Estrazione di Valence, Arousal, Tension e Primary Emotion. |
 | **v1.1 (Director)** | **Dubbing Director** | Introduzione del ruolo di "Regista del Doppiaggio". Analisi del **Subtext** (intento nascosto), `narrator_base_tone` e **Mood Propagation** per prevenire il flickering tonale. |
 | **v1.1 (Logic)** | **Mediterranean** | Adozione della strategia bilingue: ragionamento in IT (comprensione sfumature) e output in EN (compatibilità tecnica). |
+| **v1.2 (Director)** | **Enriched Subtext** | Integrazione diretta di `subtext`, `narrative_arc` e `narrator_base_tone`. Rimosso fallback hardcoded in Stage C. |
 
 ---
 
@@ -39,6 +40,7 @@ Lo Stage C è il modulo più critico: trasforma il testo in scene atomiche pront
 | **v2.0** | Structural | Regole rigide per titoli, capitoli e "punzonatura" dei tag di dialogo. | Evitare che il narratore si "fondesse" con i titoli. |
 | **v2.3** | Monastic | Divieto assoluto di modificare verbi, pronomi e struttura delle frasi. | Risolto il bug delle allucinazioni (es. cambio pronomi "lo" -> "la"). |
 | **v2.3.2** | **Universal** | Sostituzione esempi specifici con modelli generici (Marco/Julia). | Evitare bias del modello sul libro corrente e migliorare la segmentazione dei tag. |
+| **v2.4.0** | **Monastic Final** | Integrazione placeholders Stage B (subtext, arc) e Characters Profiles. Allineamento con Qwen3-TTS 1.7B. | Versione definitiva per produzione "Cronache del Silicio". |
 
 ---
 

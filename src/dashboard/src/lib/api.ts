@@ -89,7 +89,7 @@ export interface PreproductionData {
 //   local dev (porta 5173):    ''      → cade su VITE_API_BASE o localhost:8000
 import { base } from '$app/paths';
 import { browser } from '$app/environment';
-export const API_BASE: string = base || (import.meta.env.VITE_API_BASE as string) || (browser ? `http://${window.location.hostname}:8000` : 'http://127.0.0.1:8000');
+export const API_BASE: string = (base || (import.meta.env.VITE_API_BASE as string) || (browser ? `http://${window.location.hostname}:8000` : 'http://127.0.0.1:8000')) + '/api';
 
 export async function fetchProjects(): Promise<Project[]> {
     const res = await fetch(`${API_BASE}/projects`);

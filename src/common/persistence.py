@@ -142,20 +142,12 @@ class DiasPersistence:
                 "logs"
             ]
             root = self.project_root
+            for dir_name in dirs:
+                path = root / dir_name
+                path.mkdir(parents=True, exist_ok=True)
         else:
-            # Struttura legacy globale
-            dirs = [
-                "stage_a/input", "stage_a/output",
-                "stage_b/input", "stage_b/output", 
-                "stage_c/input", "stage_c/output",
-                "stage_d/input", "stage_d/output",
-                "final", "logs"
-            ]
-            root = self.base_path
-        
-        for dir_name in dirs:
-            path = root / dir_name
-            path.mkdir(parents=True, exist_ok=True)
+            # Assicura solo la radice dei progetti
+            (self.base_path / "projects").mkdir(parents=True, exist_ok=True)
     
     def save_stage_input(self, stage: str, data: Dict[str, Any], book_id: str, 
                         block_id: Optional[str] = None,

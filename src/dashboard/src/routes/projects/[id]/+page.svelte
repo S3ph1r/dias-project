@@ -68,6 +68,12 @@
         selectedVoice = voiceIds[0];
       }
 
+      // Proactive load: if project is already analyzed, fetch fingerprint immediately
+      const isAnalyzed = details?.status === 'analisi_completed' || details?.status === 'ready';
+      if (isAnalyzed && !fingerprint) {
+        await loadPreprodData();
+      }
+
       // Pre-load pre-production if tab is active and not yet loaded
       if (activeTab === 'preproduction' && !preproduction) {
         await loadPreprodData();

@@ -32,13 +32,12 @@ from pathlib import Path
 # Aggiungi il path root al Python path per trovare il modulo 'src'
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-# Import common DIAS components
+from src.common.persistence import DiasPersistence
 from src.common.base_stage import BaseStage
 from src.common.redis_factory import get_redis_client
 from src.common.config import get_config
 from src.common.models import IngestionBlock, BookMetadata
 from src.common.logging_setup import setup_logging
-from src.common.persistence import DiasPersistence
 
 # Download required NLTK data
 try:
@@ -704,11 +703,11 @@ class TextIngester(BaseStage):
                 self.logger.error("No valid project_id provided in message")
                 return None
 
-            # Re-initialize persistence for this specific project
-            from src.common.persistence import DiasPersistence
             self.persistence = DiasPersistence(project_id=project_id)
 
             self.logger.info(f"=== Stage A Processing for project: {project_id} ===")
+            
+            saved_file_paths = {}
             
             # --- DETERMINISTIC SOURCE DETECTION ---
             # Use the provided file_path (which is the source or normalized text pointer)

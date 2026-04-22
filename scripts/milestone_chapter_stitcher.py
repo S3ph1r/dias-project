@@ -9,7 +9,8 @@ from typing import List, Dict, Optional
 # --- CONFIGURATION ---
 BOOK_ID = "Cronache-del-Silicio"
 CHAPTER_ID = "chapter_001" # We'll filter for this
-BASE_DIR = Path("/home/Projects/NH-Mini/sviluppi/dias")
+# Calcolo dinamico della BASE_DIR (root del progetto dias)
+BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 STAGE_C_DIR = DATA_DIR / "stage_c" / "output"
 STAGE_D_DIR = DATA_DIR / "stage_d" / "output"
