@@ -291,7 +291,6 @@ class TextDirector:
             
             if start_index != -1:
                 try:
-                    import json
                     decoder = json.JSONDecoder()
                     scenes_list, index = decoder.raw_decode(response_text[start_index:])
                     self.logger.info(f"JSON parsed successfully using raw_decode (Pointer at {index})")
