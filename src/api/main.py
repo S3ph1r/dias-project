@@ -40,16 +40,16 @@ async def get_workers_status():
         "stage_b": "stage_b_semantic_analyzer.py",
         "stage_c": "stage_c_scene_director.py",
         "stage_d": "stage_d_voice_gen.py",
-        "orchestrator": "src/common/orchestrator.py"
+        "orchestrator": "src.common.orchestrator"
     }
     
     status = {}
     import subprocess
     for key, pattern in workers.items():
         try:
-            # Check specifically for python execution of the script
-            # We use a pattern that matches the script name at the end or with python
-            cmd = f"pgrep -f '[p]ython.*{pattern}'"
+            # Check specifically for python execution of the script or module
+            # Using a pattern that is flexible for dots or slashes
+            cmd = f"pgrep -f 'python.*{pattern.replace('.', '[./]')}'"
             output = subprocess.check_output(cmd, shell=True).decode()
             if output.strip():
                 status[key] = "running"
@@ -624,8 +624,37 @@ async def reset_project_stage(project_id: str, stage_id: str):
             for f in output_path.glob("*"):
                 if f.is_file(): f.unlink()
                 elif f.is_dir(): shutil.rmtree(f)
+            logger.info(f"Deleted output files for stage {stage_id} of project {clean_title}")
             
-        # 4. Identify previous stage and re-enqueue
+        # 5. --- REDIS DEEP CLEANUP ---
+        # Clear Task Registry for this project (Idempotency & Atomic Locks)
+        registry_key = f"dias:registry:{clean_title}"
+        if redis_client.client.exists(registry_key):
+            redis_client.client.delete(registry_key)
+            logger.info(f"Deleted registry hash for project {clean_title}")
+            
+        # Clear Task Tracker (legacy/in-flight)
+        tracker_pattern = f"dias:tracker:{clean_title}:*"
+        tracker_keys = redis_client.client.keys(tracker_pattern)
+        if tracker_keys:
+            redis_client.client.delete(*tracker_keys)
+            logger.info(f"Cleared {len(tracker_keys)} legacy tracker keys")
+            
+        # Clear Stage Checkpoint (Orchestrator Position)
+        # Mapping stage_id to internal stage name for checkpoint keys
+        checkpoint_map = {
+            "stage_b": "stage_b",
+            "stage_c": "stage_c",
+            "stage_d": "stage_d",
+            "stage_e": "stage_e",
+            "stage_f": "stage_f",
+        }
+        internal_stage = checkpoint_map.get(stage_id)
+        if internal_stage:
+            redis_client.client.delete(f"dias:project:{clean_title}:checkpoint:{internal_stage}")
+            logger.info(f"Cleared checkpoint for {internal_stage} (project {clean_title})")
+            
+        # 6. Identify previous stage and re-enqueue
         # This is a bit complex as it depends on the flow. 
         # Simplified: if resetting Stage C, look at Stage B outputs.
         
@@ -720,15 +749,15 @@ async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = Non
         # --- ORCHESTRATOR AUTO-START ---
         import subprocess
         try:
-            pgrep_check = subprocess.run(["pgrep", "-f", f"src/common/orchestrator.py {clean_title}"], capture_output=True)
+            # Flexible pattern to match both module style (dots) and script style (slashes)
+            search_pattern = f"src[./]common[./]orchestrator.*{clean_title}"
+            pgrep_check = subprocess.run(["pgrep", "-f", search_pattern], capture_output=True)
             if pgrep_check.returncode != 0:
-                logger.info(f"🚀 Avvio Orchestratore in background per il progetto {clean_title}...")
+                logger.info(f"🚀 Avvio Orchestratore (modulo) in background per {clean_title}...")
                 python_bin = BASE_DIR / ".venv" / "bin" / "python3"
-                orchestrator_script = BASE_DIR / "src" / "common" / "orchestrator.py"
-                log_file = BASE_DIR / "logs" / "orchestrator.log"
                 
-                # Comando nohup con PYTHONPATH per garantire il caricamento dei moduli di progetto
-                cmd = f"nohup env PYTHONPATH=. {python_bin} {orchestrator_script} {clean_title} >> {log_file} 2>&1 &"
+                # Use module mode (-m) for professional-grade import handling
+                cmd = f"nohup {python_bin} -m src.common.orchestrator {clean_title} >> {log_file} 2>&1 &"
                 subprocess.Popen(cmd, shell=True, cwd=BASE_DIR)
             else:
                 logger.info(f"✅ Orchestratore già attivo per {clean_title}.")

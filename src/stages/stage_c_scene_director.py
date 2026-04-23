@@ -179,6 +179,8 @@ class TextDirector:
 
         # entities_speaking_styles: formattato per Gemini
         entities = (macro_analysis or {}).get("entities", [])
+        # Mappa entity_id -> nome leggibile per risolvere le relations
+        entities_by_id = {e.get("entity_id", ""): e.get("text", "?") for e in entities}
         if entities:
             ent_lines = []
             for ent in entities:
@@ -212,18 +214,28 @@ class TextDirector:
             self.logger.warning(f"Could not load characters_vocal_profiles: {e}")
             characters_vocal_profiles = "  - Could not load vocal profiles."
 
-        # character_relationships: formattato per Gemini
+        # character_relationships: risolve entity_id in nomi leggibili
         relations = (macro_analysis or {}).get("relations", [])
         if relations:
             rel_lines = []
             for rel in relations:
                 src_id = rel.get("source_entity_id", "?")
                 tgt_id = rel.get("target_entity_id", "?")
+                # Risolve ID in nomi reali (es. ent_002 -> "Croft")
+                src_name = entities_by_id.get(src_id, src_id)
+                tgt_name = entities_by_id.get(tgt_id, tgt_id)
                 rel_type = rel.get("relation_type", "knows")
-                rel_lines.append(f"  - {src_id} --({rel_type})--> {tgt_id}")
+                rel_lines.append(f"  - {src_name} --({rel_type})--> {tgt_name}")
             character_relationships = "\n".join(rel_lines)
         else:
             character_relationships = "  - No specific relationships documented for this block."
+
+        # audio_cues: suggerimenti sonori da Stage B da passare al prompt
+        audio_cues_list = block_analysis.get("audio_cues", [])
+        if audio_cues_list:
+            audio_cues_str = ", ".join(f'"{c}"' for c in audio_cues_list)
+        else:
+            audio_cues_str = "  - No specific audio cues for this block."
 
         # ── Sostituzione placeholder nel template ────────────────────────────
         prompt = (
@@ -237,10 +249,11 @@ class TextDirector:
             .replace("{entities_speaking_styles}", entities_speaking_styles)
             .replace("{characters_vocal_profiles}", characters_vocal_profiles)
             .replace("{character_relationships}", character_relationships)
+            .replace("{audio_cues}", audio_cues_str)
             .replace("{text_content}", text_content)
         )
 
-        self.logger.info(f"Stage C prompt v{prompt_version} loaded. Context: {len(narrative_markers)} markers, {len(entities)} entities.")
+        self.logger.info(f"Stage C prompt v{prompt_version} loaded. Context: {len(narrative_markers)} markers, {len(entities)} entities, {len(audio_cues_list)} audio_cues.")
 
 
         # Applica pacing globale (30s) e verifica quota        # Rate limiting is managed centrally by ARIA.
@@ -283,41 +296,51 @@ class TextDirector:
                 # Mock client (MockGeminiClient)
                 response_text = self.gemini_client.generate_content(prompt, model=model_name)
 
-            # Robust JSON parsing (v2.1)
-            # Cerchiamo l'inizio del JSON (array o oggetto)
-            start_index = response_text.find('[')
-            if start_index == -1:
-                start_index = response_text.find('{')
-            
-            if start_index != -1:
-                try:
-                    decoder = json.JSONDecoder()
-                    scenes_list, index = decoder.raw_decode(response_text[start_index:])
-                    self.logger.info(f"JSON parsed successfully using raw_decode (Pointer at {index})")
-                except json.JSONDecodeError as jde:
-                    # Fallback al regex se raw_decode fallisce per qualche motivo
-                    self.logger.warning(f"raw_decode failed: {jde}. Trying regex fallback...")
-                    import re
-                    if "```json" in response_text:
-                        match = re.search(r"```json\s*(.*?)\s*```", response_text, re.DOTALL)
-                        if match:
-                            response_text = match.group(1)
-                    elif "[" in response_text and "]" in response_text:
-                        match = re.search(r"(\[.*\])", response_text, re.DOTALL)
-                        if match:
-                            response_text = match.group(1)
-                    
-                    try:
-                        scenes_list = json.loads(response_text)
-                    except json.JSONDecodeError as jde2:
-                        dump_path = "/home/Projects/NH-Mini/sviluppi/dias/logs/json_error_dump.txt"
-                        with open(dump_path, "w", encoding="utf-8") as f:
-                            f.write(response_text)
-                        self.logger.error(f"JSONDecodeError persistente: Salvata risposta raw in {dump_path}")
-                        raise jde2
-            else:
+            # Robust JSON parsing (v2.2)
+            # Cerca l'inizio del JSON: prima un array '[', poi un oggetto '{'
+            import re as _re
+            start_bracket = response_text.find('[')
+            start_brace = response_text.find('{')
+            # Prendi il primo token trovato tra [ e {
+            if start_bracket == -1 and start_brace == -1:
                 self.logger.error("Nessun blocco JSON trovato nella risposta")
                 raise ValueError("NO_JSON_FOUND")
+            elif start_bracket == -1:
+                start_index = start_brace
+            elif start_brace == -1:
+                start_index = start_bracket
+            else:
+                start_index = min(start_bracket, start_brace)
+
+            try:
+                # raw_decode si ferma al primo JSON completo, ignora testo dopo
+                decoder = json.JSONDecoder()
+                scenes_list, end_idx = decoder.raw_decode(response_text, start_index)
+                self.logger.info(f"JSON parsed successfully using raw_decode (end at {end_idx})")
+            except json.JSONDecodeError as jde:
+                # Fallback regex
+                self.logger.warning(f"raw_decode failed: {jde}. Trying regex fallback...")
+                if "```json" in response_text:
+                    match = _re.search(r"```json\s*(.*?)\s*```", response_text, _re.DOTALL)
+                    if match:
+                        response_text = match.group(1)
+                elif "```" in response_text:
+                    match = _re.search(r"```\s*(.*?)\s*```", response_text, _re.DOTALL)
+                    if match:
+                        response_text = match.group(1)
+                elif "[" in response_text and "]" in response_text:
+                    match = _re.search(r"(\[.*\])", response_text, _re.DOTALL)
+                    if match:
+                        response_text = match.group(1)
+
+                try:
+                    scenes_list = json.loads(response_text)
+                except json.JSONDecodeError as jde2:
+                    dump_path = "/tmp/dias_json_error_dump.txt"
+                    with open(dump_path, "w", encoding="utf-8") as f:
+                        f.write(response_text)
+                    self.logger.error(f"JSONDecodeError persistente: Salvata risposta raw in {dump_path}")
+                    raise jde2
 
             if not isinstance(scenes_list, list):
                 scenes_list = [scenes_list]

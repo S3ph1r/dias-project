@@ -265,7 +265,9 @@ class StageBSemanticAnalyzer(BaseStage):
             # Gestisci client Gateway, reale o mock
             if isinstance(self.gemini_client, GatewayClient):
                 # Client ARIA Gateway
-                generate_config = {}
+                generate_config = {
+                    "max_output_tokens": 8192  # Aumentato per supportare il prompt v1.2
+                }
                 if hasattr(self.config.google, 'response_mime_type'):
                     generate_config["response_mime_type"] = self.config.google.response_mime_type
                 
@@ -283,7 +285,25 @@ class StageBSemanticAnalyzer(BaseStage):
                     self.logger.error(f"Gateway Error: {response.get('error')}")
                     raise RuntimeError(f"GATEWAY_ERROR: {response.get('error')}")
                 
-                response_text = response["output"].get("text", "")
+                raw_resp = response["output"].get("text", "")
+
+                # --- RAW DUMP FOR DEBUG ---
+                dump_dir = self.persistence.project_root / "stages" / "stage_b" / "raw_dumps"
+                dump_dir.mkdir(parents=True, exist_ok=True)
+                dump_path = dump_dir / f"{block_id}_raw.txt"
+
+                try:
+                    with open(dump_path, "w", encoding="utf-8") as f:
+                        f.write(raw_resp)
+                except Exception as e:
+                    self.logger.error(f"Failed to save raw dump: {e}")
+                
+                # Read back from the saved file as requested (to ensure it matches what we parsed)
+                try:
+                    with open(dump_path, "r", encoding="utf-8") as f:
+                        response_text = f.read()
+                except Exception:
+                    response_text = raw_resp
             
             else:
                 # Mock client
@@ -370,26 +390,43 @@ class StageBSemanticAnalyzer(BaseStage):
     
     def _parse_gemini_response(self, response_text: str) -> Dict[str, Any]:
         """
-        Parse la risposta JSON da Gemini API
+        Parse la risposta JSON da Gemini API.
+        Usa raw_decode per gestire testo extra dopo il JSON (es. note di Gemini).
         """
         try:
-            # Estrai JSON dalla risposta (potrebbe avere markdown)
+            # Rimuovi wrapper markdown se presente
+            if "```json" in response_text:
+                import re
+                match = re.search(r"```json\s*(.*?)\s*```", response_text, re.DOTALL)
+                if match:
+                    response_text = match.group(1)
+            elif "```" in response_text:
+                import re
+                match = re.search(r"```\s*(.*?)\s*```", response_text, re.DOTALL)
+                if match:
+                    response_text = match.group(1)
+
+            # Trova il primo '{' come punto di partenza del JSON
             json_start = response_text.find('{')
-            json_end = response_text.rfind('}') + 1
-            
-            if json_start >= 0 and json_end > json_start:
-                json_str = response_text[json_start:json_end]
-                result = json.loads(json_str)
-            else:
-                # Prova a parsare direttamente
-                result = json.loads(response_text)
-            
+            if json_start == -1:
+                raise json.JSONDecodeError("Nessun blocco JSON trovato", response_text, 0)
+
+            # raw_decode si ferma al primo oggetto JSON completo,
+            # ignorando qualunque testo (note, commenti) che Gemini aggiunge dopo.
+            decoder = json.JSONDecoder()
+            result, _ = decoder.raw_decode(response_text, json_start)
+
+            self.logger.info(f"JSON parsed OK via raw_decode")
+
+            # Costruisci dizionario entities per risoluzione relazioni
+            entities_by_id = {e.get('entity_id', ''): e.get('text', '') for e in result.get('entities', [])}
+
             # Converti a oggetti Pydantic
             entities = [SemanticEntity(**e) for e in result.get('entities', [])]
             relations = [SemanticRelation(**r) for r in result.get('relations', [])]
             concepts = [SemanticConcept(**c) for c in result.get('concepts', [])]
             narrative_markers = [NarrativeMarker(**m) for m in result.get('narrative_markers', [])]
-            
+
             block_analysis_data = result.get('block_analysis', {})
             block_analysis = BlockAnalysis(
                 valence=block_analysis_data.get('valence', 0.5),
@@ -404,15 +441,16 @@ class StageBSemanticAnalyzer(BaseStage):
                 has_dialogue=block_analysis_data.get('has_dialogue', False),
                 audio_cues=block_analysis_data.get('audio_cues', [])
             )
-            
+
             return {
                 'entities': entities,
+                'entities_by_id': entities_by_id,  # mappa id->nome per uso in Stage C
                 'relations': relations,
                 'concepts': concepts,
                 'narrative_markers': narrative_markers,
                 'block_analysis': block_analysis
             }
-            
+
         except json.JSONDecodeError as e:
             self.logger.error(f"Errore nel parsing JSON da Gemini: {e}")
             self.logger.error(f"Risposta raw: {response_text[:500]}...")
@@ -420,14 +458,6 @@ class StageBSemanticAnalyzer(BaseStage):
         except Exception as e:
             self.logger.error(f"Errore generico nel parsing della risposta Gemini: {e}")
             raise
-            return {
-                'entities': [],
-                'relations': [],
-                'concepts': [],
-                'narrative_markers': [],
-                'block_analysis': BlockAnalysis(valence=0.5, arousal=0.5, tension=0.5, primary_emotion='neutro'),
-                'confidence_score': 0.0
-            }
     
     def _distribute_micro_chunks(self, macro_analysis: Dict[str, Any], original_message: Dict[str, Any]):
         """
