@@ -73,6 +73,10 @@ projects_dir = DATA_DIR / "projects"
 if not projects_dir.exists():
     projects_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static/projects", StaticFiles(directory=str(projects_dir)), name="projects")
+# Dual mount: when APP_BASE_PATH=/dias the API returns URLs like /dias/static/projects/...
+# Mounting also at that prefixed path makes direct :8000 access work (nginx strips the prefix anyway)
+if APP_BASE_PATH:
+    app.mount(f"{APP_BASE_PATH}/static/projects", StaticFiles(directory=str(projects_dir)), name="projects_prefixed")
 
 # ARIA Voice Assets for previews (Sibling directory check)
 aria_assets_path = BASE_DIR.parent / "ARIA" / "data" / "assets"
