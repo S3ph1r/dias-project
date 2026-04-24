@@ -566,6 +566,57 @@ async def get_project_status(project_id: str) -> Dict[str, Any]:
         "audiobook": audiobook_info
     }
 
+@api_router.get("/projects/{project_id}/status/live")
+async def get_project_live_status(project_id: str) -> Dict[str, Any]:
+    """
+    Lightweight polling endpoint — returns only counters, no file lists.
+    Use this for frontend auto-refresh instead of the full /projects/{id} endpoint.
+    Typical response size: ~200 bytes vs ~270KB for the full endpoint.
+    """
+    project_dir = get_project_dir(project_id)
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    actual_project_id = project_dir.name
+
+    # Project status from config.json
+    project_status = "idle"
+    config_path = project_dir / "config.json"
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                project_status = json.load(f).get("status", "idle")
+        except Exception:
+            pass
+
+    # Active stage from Redis
+    active_stage_raw = redis_client.get(f"dias:project:{actual_project_id}:active_stage")
+    active_stage = (active_stage_raw.decode('utf-8') if isinstance(active_stage_raw, bytes) else active_stage_raw) if active_stage_raw else None
+
+    # Orchestrator running check
+    import subprocess
+    try:
+        out = subprocess.check_output("pgrep -f 'python.*src.common.orchestrator'", shell=True).decode()
+        orchestrator_running = bool(out.strip())
+    except subprocess.CalledProcessError:
+        orchestrator_running = False
+
+    # Stage D voice progress: WAV done vs scene JSON total (scene-*.json only)
+    stage_d_dir = project_dir / "stages" / "stage_d" / "output"
+    stage_c_dir = project_dir / "stages" / "stage_c" / "output"
+    voice_done = len(list(stage_d_dir.glob("*.wav"))) if stage_d_dir.exists() else 0
+    voice_total = len([f for f in stage_c_dir.glob("*scene-*.json") if "scenes" not in f.name]) if stage_c_dir.exists() else 0
+
+    return {
+        "project_id": actual_project_id,
+        "status": project_status,
+        "active_stage": active_stage,
+        "orchestrator_running": orchestrator_running,
+        "voice_done": voice_done,
+        "voice_total": voice_total,
+    }
+
+
 @api_router.get("/info/quota")
 async def get_quota_info() -> Dict[str, Any]:
     """Returns the current ARIA/Gemini API quota usage from Redis."""

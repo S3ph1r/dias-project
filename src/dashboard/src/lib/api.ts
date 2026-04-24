@@ -225,3 +225,18 @@ export async function triggerAudiobookMaster(projectId: string): Promise<{ statu
     if (!res.ok) throw new Error('Failed to trigger audiobook master');
     return res.json();
 }
+
+export interface ProjectLiveStatus {
+    project_id: string;
+    status: string;
+    active_stage: string | null;
+    orchestrator_running: boolean;
+    voice_done: number;
+    voice_total: number;
+}
+
+export async function fetchProjectLiveStatus(id: string): Promise<ProjectLiveStatus> {
+    const res = await fetch(`${API_BASE}/projects/${id}/status/live`);
+    if (!res.ok) throw new Error('Failed to fetch live status');
+    return res.json();
+}

@@ -6,8 +6,9 @@
   import {
     fetchProjectDetails, pushSceneToStageD, fetchVoices, resumePipeline,
     checkResume, resetStage, fetchChapters, fetchFingerprint, fetchPreproduction,
-    analyzeProject, fetchWorkerStatus, triggerAudiobookMaster, API_BASE,
-    type Project, type ProjectStage, type ChapterSummary, type Fingerprint, 
+    analyzeProject, fetchWorkerStatus, triggerAudiobookMaster, fetchProjectLiveStatus,
+    API_BASE,
+    type Project, type ProjectStage, type ChapterSummary, type Fingerprint,
     type PreproductionData
   } from '../../../lib/api';
   import { playScene } from '$lib/player.svelte';
@@ -116,14 +117,48 @@
     }
   };
 
+  // Lightweight poll: updates only status/stage/workers — no heavy file lists
+  const pollLiveStatus = async () => {
+    if (!autoRefreshEnabled || loading || resuming || resetting) return;
+    try {
+      const live = await fetchProjectLiveStatus(page.params.id);
+      if (project) {
+        project = { ...project, status: live.status, active_stage: live.active_stage };
+      }
+      const nextWorkers = { ...workerStatus, orchestrator: live.orchestrator_running ? 'running' as const : 'stopped' as const };
+      if (JSON.stringify(workerStatus) !== JSON.stringify(nextWorkers)) {
+        workerStatus = nextWorkers;
+      }
+    } catch (e) {
+      // Non-critical — swallow poll errors silently
+    }
+  };
+
   onMount(() => {
     loadData();
-    refreshInterval = setInterval(() => {
-      if (autoRefreshEnabled && !loading && !resuming && !resetting) {
+
+    const startPolling = () => {
+      clearInterval(refreshInterval);
+      refreshInterval = setInterval(pollLiveStatus, 60000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        clearInterval(refreshInterval);
+      } else {
+        // Tab back in focus: full reload then resume polling
         loadData(true);
+        startPolling();
       }
-    }, 10000);
-    return () => { if (refreshInterval) clearInterval(refreshInterval); };
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    startPolling();
+
+    return () => {
+      clearInterval(refreshInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   });
 
   const toggleChunk = (id: string) => {
