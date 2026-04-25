@@ -1157,6 +1157,9 @@ async def retry_scene(project_id: str, scene_id: str, payload: Dict[str, Any] = 
 
 
 app.include_router(api_router, prefix="/api")
+# Dual registration: direct :8000 access uses /dias/api/... (nginx strips /dias/ before forwarding)
+if APP_BASE_PATH:
+    app.include_router(api_router, prefix=f"{APP_BASE_PATH}/api")
 
 # ─── Svelte static build (deve essere registrato DOPO tutte le API routes) ───
 # Build generata con: PUBLIC_BASE_PATH=/dias npm run build
