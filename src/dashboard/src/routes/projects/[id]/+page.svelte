@@ -653,9 +653,9 @@
               <div class="bg-slate-950/80 border border-slate-800 p-8 rounded-2xl space-y-6 relative overflow-hidden group">
                   <div class="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none"></div>
                   
-                    <audio 
-                    controls 
-                    src={project.audiobook.url.startsWith('http') ? project.audiobook.url : `${API_BASE}${project.audiobook.url}`} 
+                    <audio
+                    controls
+                    src={project.audiobook.url.startsWith('http') || project.audiobook.url.startsWith('/') ? project.audiobook.url : `${API_BASE}/${project.audiobook.url}`}
                     class="w-full h-12 accent-emerald-500"
                   ></audio>
                   
@@ -690,7 +690,7 @@
 
               <div class="flex justify-center pt-4">
                   <a
-                    href={project.audiobook.url.startsWith('http') ? project.audiobook.url : `${API_BASE}${project.audiobook.url}`}
+                    href={project.audiobook.url.startsWith('http') || project.audiobook.url.startsWith('/') ? project.audiobook.url : `${API_BASE}/${project.audiobook.url}`}
                     download
                     class="px-8 py-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-white text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2"
                   >
