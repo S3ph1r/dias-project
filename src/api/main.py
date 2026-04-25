@@ -72,11 +72,10 @@ DATA_DIR = persistence.base_path
 projects_dir = DATA_DIR / "projects"
 if not projects_dir.exists():
     projects_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/static/projects", StaticFiles(directory=str(projects_dir)), name="projects")
-# Dual mount: when APP_BASE_PATH=/dias the API returns URLs like /dias/static/projects/...
-# Mounting also at that prefixed path makes direct :8000 access work (nginx strips the prefix anyway)
 if APP_BASE_PATH:
-    app.mount(f"{APP_BASE_PATH}/static/projects", StaticFiles(directory=str(projects_dir)), name="projects_prefixed")
+    app.mount(f"{APP_BASE_PATH}/static/projects", StaticFiles(directory=str(projects_dir)), name="projects")
+else:
+    app.mount("/static/projects", StaticFiles(directory=str(projects_dir)), name="projects")
 
 # ARIA Voice Assets for previews (Sibling directory check)
 aria_assets_path = BASE_DIR.parent / "ARIA" / "data" / "assets"
@@ -1156,25 +1155,31 @@ async def retry_scene(project_id: str, scene_id: str, payload: Dict[str, Any] = 
         raise HTTPException(status_code=500, detail=str(e))
 
 
-app.include_router(api_router, prefix="/api")
-# Dual registration: direct :8000 access uses /dias/api/... (nginx strips /dias/ before forwarding)
 if APP_BASE_PATH:
     app.include_router(api_router, prefix=f"{APP_BASE_PATH}/api")
+else:
+    app.include_router(api_router, prefix="/api")
 
 # ─── Svelte static build (deve essere registrato DOPO tutte le API routes) ───
 # Build generata con: PUBLIC_BASE_PATH=/dias npm run build
-# Servita da FastAPI su porta 8000; nginx espone a /dias/ con prefix strip.
+# Servita da FastAPI su porta 8000; nginx (CT202) espone a /dias/ SENZA strip del prefisso.
+# CT201 riceve sempre path completi (/dias/...) sia da nginx che da accesso diretto.
 
 _svelte_build = BASE_DIR / "src" / "dashboard" / "build"
 if _svelte_build.exists():
-    # Asset Vite: mount duplice per nginx (strip /dias/) e accesso diretto :8000
+    # Asset Vite: montaggio SOLO al path prefissato (CT201 riceve sempre /dias/_app/...)
     if (_svelte_build / "_app").exists():
-        app.mount("/_app", StaticFiles(directory=str(_svelte_build / "_app")), name="svelte-app")
         if APP_BASE_PATH:
-            app.mount(f"{APP_BASE_PATH}/_app", StaticFiles(directory=str(_svelte_build / "_app")), name="svelte-app-prefixed")
+            app.mount(f"{APP_BASE_PATH}/_app", StaticFiles(directory=str(_svelte_build / "_app")), name="svelte-app")
+        else:
+            app.mount("/_app", StaticFiles(directory=str(_svelte_build / "_app")), name="svelte-app")
 
     @app.get("/", include_in_schema=False)
     async def _serve_index():
+        # Redirect a base path se configurato (evita loop SvelteKit su accesso diretto)
+        if APP_BASE_PATH:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(f"{APP_BASE_PATH}/", status_code=302)
         return FileResponse(_svelte_build / "index.html")
 
     @app.get("/{path:path}", include_in_schema=False)
