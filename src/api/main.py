@@ -1164,9 +1164,11 @@ app.include_router(api_router, prefix="/api")
 
 _svelte_build = BASE_DIR / "src" / "dashboard" / "build"
 if _svelte_build.exists():
-    # Asset Vite (_app/immutable/..., favicon, ecc.)
+    # Asset Vite: mount duplice per nginx (strip /dias/) e accesso diretto :8000
     if (_svelte_build / "_app").exists():
         app.mount("/_app", StaticFiles(directory=str(_svelte_build / "_app")), name="svelte-app")
+        if APP_BASE_PATH:
+            app.mount(f"{APP_BASE_PATH}/_app", StaticFiles(directory=str(_svelte_build / "_app")), name="svelte-app-prefixed")
 
     @app.get("/", include_in_schema=False)
     async def _serve_index():
@@ -1178,6 +1180,13 @@ if _svelte_build.exists():
         candidate = _svelte_build / path
         if candidate.is_file():
             return FileResponse(candidate)
+        # Strip base path prefix (es. "dias/robots.txt" → "robots.txt")
+        if APP_BASE_PATH:
+            base_strip = APP_BASE_PATH.lstrip("/") + "/"
+            if path.startswith(base_strip):
+                candidate2 = _svelte_build / path[len(base_strip):]
+                if candidate2.is_file():
+                    return FileResponse(candidate2)
         return FileResponse(_svelte_build / "index.html")
 
 
