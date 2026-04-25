@@ -55,9 +55,22 @@ def build_audiobook(project_id: str):
         
     logger.info(f"Trovati {len(wav_files)} file WAV vocali. Esecuzione mappatura Capitoli...")
     
-    # 2. Leggi Mapping Scene -> Capitolo & Pause dalla Scene Grid (Stage C)
+    # 2a. Carica titoli capitoli da fingerprint.json (Stage 0)
+    chapter_titles: Dict[str, str] = {}
+    fingerprint_path = project_root / "stages" / "stage_0" / "output" / "fingerprint.json"
+    if fingerprint_path.exists():
+        try:
+            with open(fingerprint_path, "r", encoding="utf-8") as f:
+                fp = json.load(f)
+            for ch in fp.get("chapters_list", []):
+                chapter_titles[f"chapter_{ch['id']}"] = ch["name"]
+            logger.info(f"Caricati {len(chapter_titles)} titoli capitoli da fingerprint")
+        except Exception as e:
+            logger.warning(f"Impossibile caricare fingerprint: {e}")
+
+    # 2b. Leggi Mapping Scene -> Capitolo & Pause dalla Scene Grid (Stage C)
     scene_data: Dict[str, Dict] = {}
-    
+
     scene_json_files = list(stage_c_dir.glob("*-scenes.json"))
     for jf in scene_json_files:
         with open(jf, "r", encoding="utf-8") as f:
@@ -104,7 +117,7 @@ def build_audiobook(project_id: str):
                 metadata_blocks.append(f"START={chapter_start_time}")
                 metadata_blocks.append(f"END={current_time_ms}")
                 # Format pulito (es. "chapter_001" -> "Chapter 1")
-                friendly_name = current_chapter.replace("_", " ").capitalize()
+                friendly_name = chapter_titles.get(current_chapter, current_chapter.replace("_", " ").capitalize())
                 metadata_blocks.append(f"title={friendly_name}\n")
             
             # Apriamo il nuovo

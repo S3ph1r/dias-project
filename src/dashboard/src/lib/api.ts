@@ -240,3 +240,15 @@ export async function fetchProjectLiveStatus(id: string): Promise<ProjectLiveSta
     if (!res.ok) throw new Error('Failed to fetch live status');
     return res.json();
 }
+
+export interface AudiobookChapter {
+    title: string;
+    start_ms: number;
+    end_ms: number;
+}
+
+export async function fetchAudiobookChapters(id: string): Promise<AudiobookChapter[]> {
+    const res = await fetch(`${API_BASE}/projects/${id}/audiobook/chapters`);
+    if (!res.ok) return [];
+    return res.json();
+}

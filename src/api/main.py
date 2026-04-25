@@ -824,6 +824,42 @@ async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = Non
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/projects/{project_id}/audiobook/chapters")
+async def get_audiobook_chapters(project_id: str):
+    """Legge i chapter markers dal metadata.txt FFmpeg e restituisce titoli + timestamp."""
+    actual_id = persistence.normalize_id(project_id)
+    metadata_path = DATA_DIR / "projects" / actual_id / "final" / "metadata.txt"
+    if not metadata_path.exists():
+        return []
+
+    chapters = []
+    current: Dict[str, Any] = {}
+    timebase_num, timebase_den = 1, 1000  # default ms
+
+    with open(metadata_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line == "[CHAPTER]":
+                if current:
+                    chapters.append(current)
+                current = {}
+            elif line.startswith("TIMEBASE="):
+                parts = line.split("=", 1)[1].split("/")
+                timebase_num, timebase_den = int(parts[0]), int(parts[1])
+            elif line.startswith("START=") and current is not None:
+                raw = int(line.split("=", 1)[1])
+                current["start_ms"] = int(raw * timebase_num * 1000 / timebase_den)
+            elif line.startswith("END=") and current is not None:
+                raw = int(line.split("=", 1)[1])
+                current["end_ms"] = int(raw * timebase_num * 1000 / timebase_den)
+            elif line.startswith("title=") and current is not None:
+                current["title"] = line.split("=", 1)[1]
+
+    if current:
+        chapters.append(current)
+    return chapters
+
+
 @api_router.post("/projects/{project_id}/master")
 async def trigger_audiobook_master(project_id: str):
     """

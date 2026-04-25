@@ -7,9 +7,10 @@
     fetchProjectDetails, pushSceneToStageD, fetchVoices, resumePipeline,
     checkResume, resetStage, fetchChapters, fetchFingerprint, fetchPreproduction,
     analyzeProject, fetchWorkerStatus, triggerAudiobookMaster, fetchProjectLiveStatus,
+    fetchAudiobookChapters,
     API_BASE,
     type Project, type ProjectStage, type ChapterSummary, type Fingerprint,
-    type PreproductionData
+    type PreproductionData, type AudiobookChapter
   } from '../../../lib/api';
   import { playScene } from '$lib/player.svelte';
   import AudioInspector from '$lib/components/AudioInspector.svelte';
@@ -36,7 +37,40 @@
   let voices = $state<Record<string, any>>({});
   let selectedVoice = $state<string | null>(null);
   let workerStatus = $state<Record<string, 'running' | 'stopped'>>({});
-  
+
+  // Audiobook player state
+  let audiobookChapters = $state<AudiobookChapter[]>([]);
+  let audioEl = $state<HTMLAudioElement | null>(null);
+  let playerCurrentTime = $state(0);
+  let playerDuration = $state(0);
+  let playerPlaying = $state(false);
+  let playerSeeking = $state(false);
+
+  const currentChapterIndex = $derived(() => {
+    if (!audiobookChapters.length || playerDuration === 0) return -1;
+    const ms = playerCurrentTime * 1000;
+    for (let i = audiobookChapters.length - 1; i >= 0; i--) {
+      if (ms >= audiobookChapters[i].start_ms) return i;
+    }
+    return 0;
+  });
+
+  function formatTime(secs: number): string {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = Math.floor(secs % 60);
+    return h > 0
+      ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+      : `${m}:${String(s).padStart(2,'0')}`;
+  }
+
+  function seekToChapter(chapter: AudiobookChapter) {
+    if (audioEl) {
+      audioEl.currentTime = chapter.start_ms / 1000;
+      audioEl.play();
+    }
+  }
+
   // Derived sorted list of voice IDs for backwards compatibility and UI loops
   const voiceIds = $derived(Object.keys(voices).sort());
   const isPipelineRunning = $derived(workerStatus.orchestrator === 'running');
@@ -218,6 +252,12 @@
       alert(`Errore: ${(e as Error).message}`);
     }
   };
+
+  $effect(() => {
+    if (activeTab === 'audiobook' && project?.audiobook && audiobookChapters.length === 0) {
+      fetchAudiobookChapters(page.params.id).then(chs => { audiobookChapters = chs; });
+    }
+  });
 
   const handleResetStage = async (stageId: string) => {
     if (!project) return;
@@ -637,67 +677,127 @@
     {#if activeTab === 'audiobook' && project}
       <div class="space-y-6">
         {#if project.audiobook}
+          {@const audioSrc = project.audiobook.url.startsWith('http') || project.audiobook.url.startsWith('/') ? project.audiobook.url : `${API_BASE}/${project.audiobook.url}`}
           <div class="bg-slate-900/40 backdrop-blur-xl border border-slate-800 rounded-3xl p-8 space-y-8 shadow-2xl">
-              <div class="flex items-center justify-between">
-                <div class="space-y-1">
-                    <h3 class="text-2xl font-black text-white italic uppercase tracking-tighter">Audiobook Master</h3>
-                    <p class="text-slate-500 font-mono text-xs uppercase tracking-widest">{project.audiobook.filename} ({(project.audiobook.size / (1024*1024)).toFixed(1)} MB)</p>
-                </div>
-                <div class="px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
-                    <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
-                    Ready for listening
+
+            <!-- Header -->
+            <div class="flex items-center justify-between">
+              <div class="space-y-1">
+                <h3 class="text-2xl font-black text-white italic uppercase tracking-tighter">Audiobook Master</h3>
+                <p class="text-slate-500 font-mono text-xs uppercase tracking-widest">{project.audiobook.filename} · {(project.audiobook.size / (1024*1024)).toFixed(1)} MB · AAC 128kbps</p>
+              </div>
+              <div class="px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+                Ready
+              </div>
+            </div>
+
+            <!-- Hidden audio element -->
+            <audio
+              bind:this={audioEl}
+              src={audioSrc}
+              ontimeupdate={() => { if (!playerSeeking && audioEl) playerCurrentTime = audioEl.currentTime; }}
+              onloadedmetadata={() => { if (audioEl) playerDuration = audioEl.duration; }}
+              onplay={() => playerPlaying = true}
+              onpause={() => playerPlaying = false}
+              onended={() => playerPlaying = false}
+              class="hidden"
+            ></audio>
+
+            <!-- Player controls -->
+            <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-6 space-y-4 relative overflow-hidden">
+              <div class="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none"></div>
+
+              <!-- Current chapter label -->
+              <div class="text-center min-h-[1.5rem]">
+                {#if audiobookChapters.length > 0 && currentChapterIndex() >= 0}
+                  <p class="text-xs font-bold text-emerald-400 uppercase tracking-widest truncate">
+                    {audiobookChapters[currentChapterIndex()].title}
+                  </p>
+                {:else}
+                  <p class="text-xs text-slate-600 uppercase tracking-widest">—</p>
+                {/if}
+              </div>
+
+              <!-- Progress bar -->
+              <div class="space-y-1">
+                <input
+                  type="range" min="0" max={playerDuration || 100} step="1"
+                  value={playerCurrentTime}
+                  onmousedown={() => playerSeeking = true}
+                  oninput={(e) => { playerCurrentTime = Number((e.target as HTMLInputElement).value); }}
+                  onchange={(e) => { if (audioEl) audioEl.currentTime = Number((e.target as HTMLInputElement).value); playerSeeking = false; }}
+                  class="w-full h-1.5 rounded-full accent-emerald-500 cursor-pointer bg-slate-800"
+                />
+                <div class="flex justify-between text-[10px] font-mono text-slate-500">
+                  <span>{formatTime(playerCurrentTime)}</span>
+                  <span>{formatTime(playerDuration)}</span>
                 </div>
               </div>
 
-              <!-- Premium Audio Player -->
-              <div class="bg-slate-950/80 border border-slate-800 p-8 rounded-2xl space-y-6 relative overflow-hidden group">
-                  <div class="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none"></div>
-                  
-                    <audio
-                    controls
-                    src={project.audiobook.url.startsWith('http') || project.audiobook.url.startsWith('/') ? project.audiobook.url : `${API_BASE}/${project.audiobook.url}`}
-                    class="w-full h-12 accent-emerald-500"
-                  ></audio>
-                  
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-                      <div class="space-y-4">
-                          <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Mastering Info</p>
-                          <div class="grid grid-cols-2 gap-4">
-                              <div class="p-4 rounded-xl bg-slate-900/50 border border-slate-800/50">
-                                  <p class="text-[8px] text-slate-500 uppercase font-black">Format</p>
-                                  <p class="text-sm font-bold text-white">M4B (AAC)</p>
-                              </div>
-                              <div class="p-4 rounded-xl bg-slate-900/50 border border-slate-800/50">
-                                  <p class="text-[8px] text-slate-500 uppercase font-black">Bitrate</p>
-                                  <p class="text-sm font-bold text-white">128 kbps</p>
-                              </div>
-                          </div>
-                      </div>
-                      
-                      <div class="space-y-4">
-                          <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Chapter Markers</p>
-                          <div class="max-h-[160px] overflow-y-auto pr-2 custom-scrollbar space-y-2">
-                              {#each chapters as chapter}
-                                  <div class="flex items-center justify-between p-3 rounded-lg bg-slate-900/30 border border-white/5 hover:bg-white/5 transition-colors cursor-pointer">
-                                      <span class="text-xs text-slate-300 font-medium">{chapter.title}</span>
-                                      <span class="text-[10px] font-mono text-slate-500">{chapter.wav_count} parts</span>
-                                  </div>
-                              {/each}
-                          </div>
-                      </div>
-                  </div>
+              <!-- Play/Pause + skip -->
+              <div class="flex items-center justify-center gap-6">
+                <button
+                  onclick={() => { const i = currentChapterIndex(); if (i > 0) seekToChapter(audiobookChapters[i-1]); }}
+                  class="text-slate-400 hover:text-white transition-colors"
+                  title="Capitolo precedente"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+                </button>
+                <button
+                  onclick={() => { if (!audioEl) return; playerPlaying ? audioEl.pause() : audioEl.play(); }}
+                  class="w-14 h-14 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30 transition-all active:scale-95"
+                >
+                  {#if playerPlaying}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="4" x2="10" y2="20"/><line x1="14" y1="4" x2="14" y2="20"/></svg>
+                  {:else}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="translate-x-0.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  {/if}
+                </button>
+                <button
+                  onclick={() => { const i = currentChapterIndex(); if (i < audiobookChapters.length - 1) seekToChapter(audiobookChapters[i+1]); }}
+                  class="text-slate-400 hover:text-white transition-colors"
+                  title="Capitolo successivo"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+                </button>
               </div>
+            </div>
 
-              <div class="flex justify-center pt-4">
-                  <a
-                    href={project.audiobook.url.startsWith('http') || project.audiobook.url.startsWith('/') ? project.audiobook.url : `${API_BASE}/${project.audiobook.url}`}
-                    download
-                    class="px-8 py-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-white text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-                    Download Master File
-                  </a>
+            <!-- Chapter list -->
+            {#if audiobookChapters.length > 0}
+              <div class="space-y-2">
+                <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Capitoli ({audiobookChapters.length})</p>
+                <div class="max-h-[320px] overflow-y-auto pr-1 custom-scrollbar space-y-1">
+                  {#each audiobookChapters as chapter, i}
+                    {@const isActive = i === currentChapterIndex()}
+                    <button
+                      onclick={() => seekToChapter(chapter)}
+                      class="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all text-left
+                        {isActive
+                          ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                          : 'bg-slate-900/30 border border-white/5 hover:bg-white/5 text-slate-300'}"
+                    >
+                      <div class="flex items-center gap-3 min-w-0">
+                        <span class="text-[10px] font-mono {isActive ? 'text-emerald-500' : 'text-slate-600'} shrink-0">{String(i+1).padStart(2,'0')}</span>
+                        <span class="text-xs font-medium truncate">{chapter.title}</span>
+                      </div>
+                      <span class="text-[10px] font-mono {isActive ? 'text-emerald-500' : 'text-slate-500'} shrink-0 ml-3">{formatTime(chapter.start_ms / 1000)}</span>
+                    </button>
+                  {/each}
+                </div>
               </div>
+            {/if}
+
+            <!-- Download -->
+            <div class="flex justify-center pt-2">
+              <a href={audioSrc} download
+                class="px-8 py-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 text-white text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                Download Master File
+              </a>
+            </div>
           </div>
         {:else}
           <div class="py-24 text-center rounded-3xl border border-dashed border-slate-800 bg-slate-900/20 space-y-6">
