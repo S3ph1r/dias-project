@@ -674,9 +674,70 @@ class TextIngester(BaseStage):
         
         # Ensure we don't go beyond text length
         best_end = min(best_end, len(text))
-        
+
         return best_end
-    
+
+    def _load_or_build_chapter_boundaries(self, project_id: str, full_text: str) -> List[Dict]:
+        """
+        Return chapter boundary list from chapter_boundaries.json (cached) or build it
+        from fingerprint.json using chapter_detector.
+
+        Returns [] if no fingerprint is available or detection fails, which causes
+        the caller to fall back to single-chapter (chapter_001) mode.
+        """
+        try:
+            from src.common.chapter_detector import load_or_build_boundaries
+        except ImportError:
+            self.logger.warning("chapter_detector not available; falling back to single-chapter mode")
+            return []
+
+        project_root = self.persistence.project_root
+        return load_or_build_boundaries(project_root, full_text)
+
+    def _chunk_by_chapters(
+        self,
+        full_text: str,
+        boundaries: List[Dict],
+        project_id: str,
+    ) -> List[tuple]:
+        """
+        Split full_text into sections defined by boundaries, then chunk each section.
+
+        Returns a list of (chapter_id: str, chapter_number: int, TextChunk).
+        Chunks are ordered: all chunks of chapter 1, then chapter 2, etc.
+        Chunk IDs are sequential across the whole book (not per-chapter).
+        """
+        results = []
+        global_chunk_idx = 0
+
+        for i, boundary in enumerate(boundaries):
+            start = boundary["start_char"]
+            end = (
+                boundaries[i + 1]["start_char"]
+                if i + 1 < len(boundaries)
+                else len(full_text)
+            )
+            chapter_text = full_text[start:end]
+            if not chapter_text.strip():
+                continue
+
+            chapter_id = boundary["chapter_id"]
+            chapter_number = boundary["chapter_number"]
+
+            chapter_chunks = self.intelligent_chunk_text(chapter_text, project_id)
+            for chunk in chapter_chunks:
+                # Re-index chunk_id globally
+                chunk.chunk_id = global_chunk_idx
+                results.append((chapter_id, chapter_number, chunk))
+                global_chunk_idx += 1
+
+            self.logger.info(
+                f"Chapter {chapter_id} ({boundary['name'][:40]}): "
+                f"{len(chapter_chunks)} macro-chunks"
+            )
+
+        return results
+
     def process(self, message: dict) -> Optional[dict]:
         """
         Process a book file by extracting and chunking text.
@@ -738,38 +799,49 @@ class TextIngester(BaseStage):
                 self.logger.error(f"No text extracted from {book_id}")
                 return None
             
+            # Build chapter boundaries (mathematical, no LLM calls)
+            chapter_boundaries = self._load_or_build_chapter_boundaries(project_id, full_text)
+            chapter_count = len(chapter_boundaries) if chapter_boundaries else 1
+
             # Create book metadata
             book_metadata = BookMetadata(
                 book_id=book_id,
                 title=message.get("title", "Unknown"),
                 author=message.get("author", ""),
                 word_count=len(full_text.split()),
-                chapter_count=1,  # Default to 1 chapter
+                chapter_count=chapter_count,
                 file_path=str(file_path),
                 file_format=self.detect_file_format(file_path).value
             )
-            
-            # Intelligently chunk the text
-            chunks = self.intelligent_chunk_text(full_text, project_id)
-            
-            if not chunks:
+
+            # Chunk text — chapter-aware if boundaries available, else full-text fallback
+            if chapter_boundaries:
+                self.logger.info(f"Chapter-aware chunking: {chapter_count} chapters detected")
+                chunks_with_chapters = self._chunk_by_chapters(full_text, chapter_boundaries, project_id)
+            else:
+                self.logger.info("No chapter boundaries found — chunking as single chapter (chapter_001)")
+                raw_chunks = self.intelligent_chunk_text(full_text, project_id)
+                chunks_with_chapters = [("chapter_001", 1, c) for c in raw_chunks]
+
+            if not chunks_with_chapters:
                 self.logger.error(f"Text chunking failed for {project_id}")
                 return None
-            
-            self.logger.info(f"Created {len(chunks)} chunks for book {project_id}")
-            
-            # Convert chunks to ingestion blocks
+
+            total_chunks = len(chunks_with_chapters)
+            self.logger.info(f"Created {total_chunks} total chunks for book {project_id}")
+
+            # Convert to ingestion blocks — one per (chapter_id, chunk)
             ingestion_blocks = []
-            for i, chunk in enumerate(chunks):
+            for i, (ch_id, ch_num, chunk) in enumerate(chunks_with_chapters):
                 block = IngestionBlock(
                     book_id=project_id,
-                    chapter_id=f"{project_id}-chap-1",  # Default chapter ID
-                    chapter_number=1,  # Default chapter number
-                    block_id=str(uuid4()),  # Generate unique block ID
+                    chapter_id=ch_id,
+                    chapter_number=ch_num,
+                    block_id=str(uuid4()),
                     block_text=chunk.text,
                     word_count=chunk.word_count,
                     block_index=i,
-                    total_blocks_in_chapter=len(chunks)
+                    total_blocks_in_chapter=total_chunks
                 )
                 ingestion_blocks.append(block)
             
@@ -808,11 +880,13 @@ class TextIngester(BaseStage):
                     
                     self.logger.info(f"💾 Blocco salvato: {filepath}")
                     
-                    # --- NEW: Scomposizione in MICRO-CHUNK per Stage C ---
+                    # --- Scomposizione in MICRO-CHUNK per Stage C ---
                     micro_chunks = self.intelligent_micro_chunk(block.block_text, block.block_index)
                     for micro in micro_chunks:
                         micro_data = {
                             "book_id": block.book_id,
+                            "chapter_id": block.chapter_id,      # propagate chapter
+                            "chapter_number": block.chapter_number,
                             "macro_index": block.block_index,
                             "micro_index": micro["micro_index"],
                             "block_id": f"{block.book_id}-{micro['label']}",

@@ -55,36 +55,85 @@ def build_audiobook(project_id: str):
         
     logger.info(f"Trovati {len(wav_files)} file WAV vocali. Esecuzione mappatura Capitoli...")
     
-    # 2a. Carica titoli capitoli da fingerprint.json (Stage 0)
+    # 2a. Carica titoli capitoli e mappa subtitle→chapter_id da fingerprint.json
+    # chapter_id = chapter_{i+1:03d} (positional, 1-based) — uniform across all project types
     chapter_titles: Dict[str, str] = {}
-    fingerprint_path = project_root / "stages" / "stage_0" / "output" / "fingerprint.json"
-    if fingerprint_path.exists():
+    subtitle_to_chapter: Dict[str, str] = {}
+    ordinal_to_chapter: Dict[int, str] = {}  # ordinal number → chapter_id
+
+    _ROMAN_MAP = {
+        "I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6, "VII": 7,
+        "VIII": 8, "IX": 9, "X": 10, "XI": 11, "XII": 12, "XIII": 13,
+        "XIV": 14, "XV": 15, "XVI": 16, "XVII": 17, "XVIII": 18, "XIX": 19,
+        "XX": 20, "XXI": 21, "XXII": 22, "XXIII": 23, "XXIV": 24,
+        "XXV": 25, "XXVI": 26, "XXVII": 27, "XXVIII": 28, "XXIX": 29, "XXX": 30,
+    }
+
+    # Try fingerprint at project root first, then stages/stage_0/output/
+    _fp_candidates = [
+        project_root / "fingerprint.json",
+        project_root / "stages" / "stage_0" / "output" / "fingerprint.json",
+    ]
+    fingerprint_path = next((p for p in _fp_candidates if p.exists()), None)
+
+    if fingerprint_path:
         try:
             with open(fingerprint_path, "r", encoding="utf-8") as f:
                 fp = json.load(f)
-            for ch in fp.get("chapters_list", []):
-                chapter_titles[f"chapter_{ch['id']}"] = ch["name"]
-            logger.info(f"Caricati {len(chapter_titles)} titoli capitoli da fingerprint")
+            chapters_raw = fp.get("chapters", fp.get("chapters_list", []))
+            for i, ch in enumerate(chapters_raw):
+                cid = f"chapter_{i + 1:03d}"
+                name = ch.get("title", ch.get("name", ""))
+                chapter_titles[cid] = name
+
+                # Subtitle map: text after "Capitolo X: " for fuzzy match in scene text
+                parts = name.split(": ", 1)
+                subtitle = (parts[1] if len(parts) > 1 else name).strip().lower()
+                if subtitle:
+                    subtitle_to_chapter[subtitle] = cid
+
+                # Ordinal map: extract Roman or plain int from prefix ("Capitolo XIV" → 14)
+                prefix = parts[0].strip() if len(parts) > 1 else ""
+                prefix_tokens = prefix.split()
+                if len(prefix_tokens) >= 2:
+                    ordinal_token = prefix_tokens[-1].upper()
+                    ordinal_num = _ROMAN_MAP.get(ordinal_token)
+                    if ordinal_num is None:
+                        try:
+                            ordinal_num = int(ordinal_token)
+                        except ValueError:
+                            pass
+                    if ordinal_num:
+                        ordinal_to_chapter[ordinal_num] = cid
+
+            logger.info(
+                f"Caricati {len(chapter_titles)} capitoli da fingerprint "
+                f"({len(subtitle_to_chapter)} sottotitoli, {len(ordinal_to_chapter)} ordinali)"
+            )
         except Exception as e:
             logger.warning(f"Impossibile caricare fingerprint: {e}")
 
-    # 2b. Leggi Mapping Scene -> Capitolo & Pause dalla Scene Grid (Stage C)
+    # 2b. Leggi Mapping Scene -> dati dalla Scene Grid (Stage C)
+    # Stage C scrive un file JSON per ogni scena (non raggruppati).
+    # Il chapter_id da Stage C è hardcodato (bug upstream); usiamo scene_label + text_content
+    # per rilevare i confini capitolo dalle scene "Narratore — titolo".
     scene_data: Dict[str, Dict] = {}
 
-    scene_json_files = list(stage_c_dir.glob("*-scenes.json"))
-    for jf in scene_json_files:
-        with open(jf, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            scenes = data.get("scenes", [])
-            for s in scenes:
-                # Usa il nome corretto scene_id o componilo nel dubbio
-                # I file WAV di stage_d contengono il project_id prima del chunk
-                s_id = s.get("scene_id")
-                if s_id:
-                    scene_data[s_id] = {
-                        "chapter_id": s.get("chapter_id", "Chapter"),
-                        "pause_after_ms": s.get("pause_after_ms", 1000)
-                    }
+    for jf in stage_c_dir.glob("*.json"):
+        try:
+            with open(jf, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            s_id = data.get("scene_id")
+            if s_id:
+                scene_data[s_id] = {
+                    "pause_after_ms": data.get("pause_after_ms", 1000),
+                    "scene_label": data.get("scene_label", ""),
+                    "text_content": data.get("text_content", ""),
+                }
+        except Exception:
+            pass
+
+    logger.info(f"Mappate {len(scene_data)} scene da Stage C")
 
     # 3. Costruzione Metadata & Concat List
     with open(concat_txt, "w", encoding="utf-8") as cfile:
@@ -94,20 +143,82 @@ def build_audiobook(project_id: str):
             cfile.write(f"file '{abs_p}'\n")
 
     metadata_blocks = [";FFMETADATA1\n"]
-    
-    current_chapter = None
+
+    current_chapter: str | None = None
     chapter_start_time = 0
     current_time_ms = 0
-    
+
     for wav_path in wav_files:
         # Trova il scene_id dal filename. Esempio: project_id-chunk-000-micro-000-scene-001.wav
         filename = wav_path.name
         # Rimuoviamo l'estensione e il prefisso project_id (la chiave in Stage C è 'chunk-...')
         scene_id = filename.replace(".wav", "").replace(f"{project_id}-", "")
-        
-        info = scene_data.get(scene_id, {"chapter_id": "Unknown Chapter", "pause_after_ms": 1000})
-        chapter_id = info["chapter_id"]
-        
+
+        info = scene_data.get(scene_id, {})
+
+        # Rileva confine capitolo: scene il cui testo inizia con "Capitolo " e corrisponde
+        # a un sottotitolo del fingerprint (Stage A non propaga chapter_id correttamente).
+        # Usiamo il testo come segnale primario perché scene_label varia ("titolo", "cornice", ecc.)
+        chapter_id = current_chapter  # default: mantieni capitolo corrente
+        text_lower = info.get("text_content", "").strip().lower()
+
+        # Detect chapter boundary: scene text starts with "capitolo " (or "chapter ")
+        _chapter_keywords = ("capitolo ", "chapter ", "parte ")
+        _starts_with_chapter = any(text_lower.startswith(kw) for kw in _chapter_keywords)
+
+        if chapter_titles and _starts_with_chapter:
+            # Strategy 1: subtitle match (text after "Capitolo X: ")
+            matched = False
+            for subtitle, cid in subtitle_to_chapter.items():
+                if subtitle and subtitle in text_lower:
+                    chapter_id = cid
+                    matched = True
+                    break
+
+            if not matched:
+                # Strategy 2: ordinal extraction — Italian cardinal or Roman numeral
+                _IT_CARD = {
+                    "uno": 1, "due": 2, "tre": 3, "quattro": 4, "cinque": 5,
+                    "sei": 6, "sette": 7, "otto": 8, "nove": 9, "dieci": 10,
+                    "undici": 11, "dodici": 12, "tredici": 13, "quattordici": 14,
+                    "quindici": 15, "sedici": 16, "diciassette": 17, "diciotto": 18,
+                    "diciannove": 19, "venti": 20, "ventuno": 21, "ventidue": 22,
+                    "ventitré": 23, "ventitre": 23, "ventiquattro": 24, "venticinque": 25,
+                    "ventisei": 26, "ventisette": 27, "ventotto": 28,
+                    "primo": 1, "secondo": 2, "terzo": 3, "quarto": 4, "quinto": 5,
+                    "sesto": 6, "settimo": 7, "ottavo": 8, "nono": 9, "decimo": 10,
+                    "undicesimo": 11, "dodicesimo": 12, "tredicesimo": 13,
+                    "quattordicesimo": 14, "quindicesimo": 15, "sedicesimo": 16,
+                    "diciassettesimo": 17, "diciottesimo": 18, "diciannovesimo": 19,
+                }
+                # Strip the keyword prefix and extract first token
+                remaining = text_lower
+                for kw in _chapter_keywords:
+                    if remaining.startswith(kw):
+                        remaining = remaining[len(kw):]
+                        break
+                first_token = remaining.split()[0].rstrip(":.,") if remaining.split() else ""
+
+                # Try Italian cardinal
+                num = _IT_CARD.get(first_token)
+                # Try Roman numeral
+                if num is None:
+                    num = _ROMAN_MAP.get(first_token.upper())
+                # Try plain integer
+                if num is None:
+                    try:
+                        num = int(first_token)
+                    except ValueError:
+                        pass
+
+                if num and num in ordinal_to_chapter:
+                    chapter_id = ordinal_to_chapter[num]
+                    logger.debug(f"Ordinal fallback: '{first_token}' → {num} → {chapter_id}")
+
+        # Primo WAV: inizializza capitolo di default se nessun marker trovato
+        if chapter_id is None:
+            chapter_id = "chapter_001"
+
         # Gestiamo il marker dei capitoli
         if current_chapter != chapter_id:
             # Abbiamo chiuso il capitolo precedente?
@@ -133,7 +244,7 @@ def build_audiobook(project_id: str):
         metadata_blocks.append("TIMEBASE=1/1000")
         metadata_blocks.append(f"START={chapter_start_time}")
         metadata_blocks.append(f"END={current_time_ms}")
-        friendly_name = current_chapter.replace("_", " ").capitalize()
+        friendly_name = chapter_titles.get(current_chapter, current_chapter.replace("_", " ").capitalize())
         metadata_blocks.append(f"title={friendly_name}\n")
 
     with open(metadata_txt, "w", encoding="utf-8") as mfile:

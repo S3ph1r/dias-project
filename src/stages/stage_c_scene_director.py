@@ -507,16 +507,23 @@ class SceneDirector(BaseStage):
     def _load_text_block(self, project_id: str, block_id: str) -> str:
         """Carica blocco testo da Stage A (Micro o Macro)"""
         try:
-            # 1. Caricamento DETERMINISTICO (Micro-Chunk)
             data = self.persistence.load_stage_output("a", project_id, block_id)
             if data:
                 return data.get("block_text", "")
-            
             raise FileNotFoundError(f"Blocco testo deterministico non trovato per project_id={project_id}, block_id={block_id} in Stage A")
-                
         except Exception as e:
             self.logger.error(f"Errore caricamento blocco testo: {e}")
             raise
+
+    def _load_block_chapter_id(self, project_id: str, block_id: str) -> str:
+        """Read chapter_id from the Stage A micro-chunk JSON. Falls back to chapter_001."""
+        try:
+            data = self.persistence.load_stage_output("a", project_id, block_id)
+            if data:
+                return data.get("chapter_id", "chapter_001")
+        except Exception:
+            pass
+        return "chapter_001"
             
     def _segment_into_scenes(self, text_content: str, macro_analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -804,12 +811,13 @@ class SceneDirector(BaseStage):
             
             # 2. Trasformazione in Scene Scripts validi per Stage D
             scene_scripts = []
-            # clean_title and chunk_label are already defined above and aligned
-            
+            # Retrieve chapter_id from Stage A micro-chunk JSON (propagated from fingerprint)
+            block_chapter_id = self._load_block_chapter_id(project_id, block_id)
+
             for i, d_scene in enumerate(dynamic_scenes):
                 # scene_num starts from 1 for each micro-chunk
                 script = self._create_scene_script_dynamic(
-                    d_scene, i + 1, macro_analysis, project_id, chunk_label, "chapter_001", job_id
+                    d_scene, i + 1, macro_analysis, project_id, chunk_label, block_chapter_id, job_id
                 )
                 scene_scripts.append(script)
                 
