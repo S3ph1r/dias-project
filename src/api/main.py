@@ -604,6 +604,10 @@ async def get_project_live_status(project_id: str) -> Dict[str, Any]:
     except subprocess.CalledProcessError:
         orchestrator_running = False
 
+    # Global pause state
+    paused_raw = redis_client.get("dias:status:paused")
+    paused_reason = (paused_raw.decode('utf-8') if isinstance(paused_raw, bytes) else paused_raw) if paused_raw else None
+
     # Stage D voice progress: WAV done vs scene JSON total (scene-*.json only)
     stage_d_dir = project_dir / "stages" / "stage_d" / "output"
     stage_c_dir = project_dir / "stages" / "stage_c" / "output"
@@ -615,6 +619,7 @@ async def get_project_live_status(project_id: str) -> Dict[str, Any]:
         "status": project_status,
         "active_stage": active_stage,
         "orchestrator_running": orchestrator_running,
+        "paused_reason": paused_reason,
         "voice_done": voice_done,
         "voice_total": voice_total,
     }
@@ -822,6 +827,21 @@ async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = Non
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/projects/{project_id}/unpause")
+async def unpause_pipeline(project_id: str):
+    """
+    Clears the global pipeline pause (dias:status:paused).
+    The orchestrator will resume its loop automatically within a few seconds.
+    """
+    paused_raw = redis_client.get("dias:status:paused")
+    if not paused_raw:
+        return {"status": "ok", "message": "Pipeline non era in pausa."}
+    reason = paused_raw.decode('utf-8') if isinstance(paused_raw, bytes) else paused_raw
+    redis_client.client.delete("dias:status:paused")
+    logger.info(f"Global pause cleared for project {project_id}. Was: {reason}")
+    return {"status": "ok", "message": "Pausa rimossa. L'orchestratore riprenderà entro pochi secondi."}
+
 
 @api_router.get("/projects/{project_id}/audiobook/chapters")
 async def get_audiobook_chapters(project_id: str):

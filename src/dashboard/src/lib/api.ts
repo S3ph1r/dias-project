@@ -231,6 +231,7 @@ export interface ProjectLiveStatus {
     status: string;
     active_stage: string | null;
     orchestrator_running: boolean;
+    paused_reason: string | null;
     voice_done: number;
     voice_total: number;
 }
@@ -238,6 +239,12 @@ export interface ProjectLiveStatus {
 export async function fetchProjectLiveStatus(id: string): Promise<ProjectLiveStatus> {
     const res = await fetch(`${API_BASE}/projects/${id}/status/live`);
     if (!res.ok) throw new Error('Failed to fetch live status');
+    return res.json();
+}
+
+export async function clearPipelinePause(projectId: string): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/unpause`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to clear pause');
     return res.json();
 }
 

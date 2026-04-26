@@ -7,7 +7,7 @@
     fetchProjectDetails, pushSceneToStageD, fetchVoices, resumePipeline,
     checkResume, resetStage, fetchChapters, fetchFingerprint, fetchPreproduction,
     analyzeProject, fetchWorkerStatus, triggerAudiobookMaster, fetchProjectLiveStatus,
-    fetchAudiobookChapters,
+    fetchAudiobookChapters, clearPipelinePause,
     API_BASE,
     type Project, type ProjectStage, type ChapterSummary, type Fingerprint,
     type PreproductionData, type AudiobookChapter
@@ -37,6 +37,8 @@
   let voices = $state<Record<string, any>>({});
   let selectedVoice = $state<string | null>(null);
   let workerStatus = $state<Record<string, 'running' | 'stopped'>>({});
+  let pausedReason = $state<string | null>(null);
+  let unpausing = $state(false);
 
   // Audiobook player state
   let audiobookChapters = $state<AudiobookChapter[]>([]);
@@ -46,7 +48,7 @@
   let playerPlaying = $state(false);
   let playerSeeking = $state(false);
 
-  const currentChapterIndex = $derived(() => {
+  const currentChapterIndex: number = $derived.by(() => {
     if (!audiobookChapters.length || playerDuration === 0) return -1;
     const ms = playerCurrentTime * 1000;
     for (let i = audiobookChapters.length - 1; i >= 0; i--) {
@@ -74,7 +76,9 @@
   // Derived sorted list of voice IDs for backwards compatibility and UI loops
   const voiceIds = $derived(Object.keys(voices).sort());
   const isPipelineRunning = $derived(workerStatus.orchestrator === 'running');
+  const isPipelinePaused = $derived(!!pausedReason);
   const activeWorkerName = $derived(
+    isPipelinePaused ? 'Paused' :
     workerStatus.orchestrator !== 'running' ? (project?.status === 'completed' ? 'Completed' : 'Pipeline Idle') :
     (project?.active_stage === 'stage_a' ? 'Stage A' :
      project?.active_stage === 'stage_b' ? 'Stage B' :
@@ -163,6 +167,7 @@
       if (JSON.stringify(workerStatus) !== JSON.stringify(nextWorkers)) {
         workerStatus = nextWorkers;
       }
+      pausedReason = live.paused_reason ?? null;
     } catch (e) {
       // Non-critical — swallow poll errors silently
     }
@@ -239,6 +244,20 @@
       alert(`Errore: ${(e as Error).message}`);
     } finally {
       resuming = false;
+    }
+  };
+
+  const handleClearPause = async () => {
+    if (!project) return;
+    unpausing = true;
+    try {
+      const result = await clearPipelinePause(project.id);
+      pausedReason = null;
+      alert(result.message);
+    } catch (e) {
+      alert(`Errore: ${(e as Error).message}`);
+    } finally {
+      unpausing = false;
     }
   };
 
@@ -381,24 +400,53 @@
 
       {#if project && (project.overall_progress ?? 0) < 100}
         <div class="flex items-center gap-3">
-          <div class="flex items-center gap-2 px-3 py-1.5 rounded-full {activeWorkerName === 'Pipeline Idle' ? 'bg-slate-800 border-slate-700 text-slate-500' : (activeWorkerName === 'Completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 animate-pulse')} border text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/5">
-            <div class={activeWorkerName === 'Pipeline Idle' ? 'w-1.5 h-1.5 rounded-full bg-slate-600' : 'w-1.5 h-1.5 rounded-full bg-emerald-500'}></div>
+          <!-- Status pill: amber when paused, green when running, grey when idle -->
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-full {
+            isPipelinePaused ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+            activeWorkerName === 'Pipeline Idle' ? 'bg-slate-800 border-slate-700 text-slate-500' :
+            activeWorkerName === 'Completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+            'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 animate-pulse'
+          } border text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/5">
+            <div class="{isPipelinePaused ? 'w-1.5 h-1.5 rounded-full bg-amber-500' : activeWorkerName === 'Pipeline Idle' ? 'w-1.5 h-1.5 rounded-full bg-slate-600' : 'w-1.5 h-1.5 rounded-full bg-emerald-500'}"></div>
             {activeWorkerName}
           </div>
-          <button
-            onclick={handleResumePipeline}
-            disabled={resuming || isPipelineRunning}
-          class="px-6 py-2.5 rounded-xl {isPipelineRunning ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-sky-500 hover:bg-sky-400 text-white shadow-lg shadow-sky-500/20'} text-xs font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
-        >
-          {#if resuming}
-            <div class="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-            Resuming...
+
+          {#if isPipelinePaused}
+            <!-- Pause banner + unlock button -->
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] font-semibold max-w-xs truncate" title={pausedReason ?? ''}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              {pausedReason}
+            </div>
+            <button
+              onclick={handleClearPause}
+              disabled={unpausing}
+              class="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 text-xs font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-amber-500/20"
+            >
+              {#if unpausing}
+                <div class="w-3.5 h-3.5 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin"></div>
+                Sbloccando...
+              {:else}
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                Sblocca Pausa
+              {/if}
+            </button>
           {:else}
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>
-            {(project?.overall_progress ?? 0) === 0 ? 'Start Production' : 'Resume Pipeline'}
+            <!-- Normal start/resume button -->
+            <button
+              onclick={handleResumePipeline}
+              disabled={resuming || isPipelineRunning}
+              class="px-6 py-2.5 rounded-xl {isPipelineRunning ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-sky-500 hover:bg-sky-400 text-white shadow-lg shadow-sky-500/20'} text-xs font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
+            >
+              {#if resuming}
+                <div class="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                Resuming...
+              {:else}
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>
+                {(project?.overall_progress ?? 0) === 0 ? 'Start Production' : 'Resume Pipeline'}
+              {/if}
+            </button>
           {/if}
-        </button>
-      </div>
+        </div>
     {:else if project}
         <div class="px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -710,9 +758,9 @@
 
               <!-- Current chapter label -->
               <div class="text-center min-h-[1.5rem]">
-                {#if audiobookChapters.length > 0 && currentChapterIndex() >= 0}
+                {#if audiobookChapters.length > 0 && currentChapterIndex >= 0}
                   <p class="text-xs font-bold text-emerald-400 uppercase tracking-widest truncate">
-                    {audiobookChapters[currentChapterIndex()].title}
+                    {audiobookChapters[currentChapterIndex].title}
                   </p>
                 {:else}
                   <p class="text-xs text-slate-600 uppercase tracking-widest">—</p>
@@ -738,7 +786,7 @@
               <!-- Play/Pause + skip -->
               <div class="flex items-center justify-center gap-6">
                 <button
-                  onclick={() => { const i = currentChapterIndex(); if (i > 0) seekToChapter(audiobookChapters[i-1]); }}
+                  onclick={() => { const i = currentChapterIndex; if (i > 0) seekToChapter(audiobookChapters[i-1]); }}
                   class="text-slate-400 hover:text-white transition-colors"
                   title="Capitolo precedente"
                 >
@@ -755,7 +803,7 @@
                   {/if}
                 </button>
                 <button
-                  onclick={() => { const i = currentChapterIndex(); if (i < audiobookChapters.length - 1) seekToChapter(audiobookChapters[i+1]); }}
+                  onclick={() => { const i = currentChapterIndex; if (i < audiobookChapters.length - 1) seekToChapter(audiobookChapters[i+1]); }}
                   class="text-slate-400 hover:text-white transition-colors"
                   title="Capitolo successivo"
                 >
@@ -770,7 +818,7 @@
                 <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Capitoli ({audiobookChapters.length})</p>
                 <div class="max-h-[320px] overflow-y-auto pr-1 custom-scrollbar space-y-1">
                   {#each audiobookChapters as chapter, i}
-                    {@const isActive = i === currentChapterIndex()}
+                    {@const isActive = i === currentChapterIndex}
                     <button
                       onclick={() => seekToChapter(chapter)}
                       class="w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all text-left
