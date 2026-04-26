@@ -1,0 +1,57 @@
+version: "1.3"
+description: "Stage 0.1 - Intelligence-Driven Structural Discovery (v1.3 - Explicit multi-style chapter detection)"
+author: "S3ph1r DIAS Team"
+prompt_template: |
+  You are a Digital Audiobook Librarian and Structural Punctuation Analyst.
+  Your goal is to extract the structural map and the stylistic markers of the provided book text to guide an automated normalization process.
+
+  Read the provided content and identify:
+  1. The official Title and Author.
+  2. The COMPLETE list of chapters, prologues, and epilogues in sequential order.
+  3. The Punctuation Behavior: Analyze how the author delimits spoken dialogue and internal thoughts.
+
+  BOOK CONTENT:
+  {text_content}
+
+  ---
+  REQUIRED JSON OUTPUT FORMAT:
+  {{
+      "metadata": {{
+          "title": "Extracted Title",
+          "author": "Extracted Author"
+      }},
+      "punctuation_style": {{
+          "dialogue": {{
+              "open": "—",
+              "close": "—",
+              "logic_type": "toggle_paragraph | enclosed_pair",
+              "behavior": "Describe the pattern (e.g. em-dash at line start, closed with another em-dash or newline)",
+              "narrative_inciso_example": "–",
+              "note": "Mention if the same symbol is used for incisos and how to distinguish them (e.g. only at start of line)."
+          }},
+          "thought": {{
+              "open": "“",
+              "close": "”",
+              "logic_type": "enclosed_pair | other",
+              "note": "Describe the mechanics (e.g. curly quotes used for internal monologue)"
+          }}
+      }},
+      "chapters_list": [
+          {{ "id": "001", "name": "Chapter Title or Label" }}
+      ]
+  }}
+
+  CRITICAL NORMALIZATION RULES:
+  1. LOGIC TYPE DEFINITION:
+     - 'toggle_paragraph': A marker at the *start of a line* toggles speech mode for that entire paragraph. Subsequent markers in the same paragraph are boundary delimiters (closing/re-opening speech).
+     - 'enclosed_pair': Speech or Thought is always strictly contained between an 'open' and a 'close' marker pair (e.g. quotes or guillemets).
+  2. NARRATIVE INCISO PROTECTION: Identify characters (like en-dash –) used for narrative beats that are NOT dialogue markers, to prevent false positives in normalization.
+  3. MAPPING INTEGRITY (CRITICAL): You MUST be exhaustive. Every chapter-level division must appear in the list, including prologues, epilogues, and parts. Do NOT omit any. Count the headings you find and verify your list matches that count.
+  4. CHAPTER HEADING STYLES — scan for ALL of these patterns:
+     a. Explicit labels: "Capitolo N", "Chapter N", "Parte N", "Sezione N" (with or without subtitle after colon)
+     b. Bare numbers on isolated lines: a line containing only "1", "2", "3" etc. that marks a chapter start
+     c. ALL-CAPS multi-word headings on their own line: e.g. "PROLOGO", "EPILOGO", "IL RACCONTO DEL PRETE", "THE AWAKENING", "PART ONE". These are the structural headings for the entire chapter — NOT recurring poem stanzas or song lyrics inside a chapter.
+        IMPORTANT: If the book uses ALL-CAPS headings of the form "WORD WORD WORD" for its chapters, scan the ENTIRE text and list ALL of them in order. A chapter series like "IL RACCONTO DEL X" where X changes each time must have ALL variants listed.
+     d. Mixed formats: some books use a combination of the above.
+  5. Accuracy is paramount. Use the exact characters found (e.g. observe if it is an em-dash — or a simple hyphen -).
+  6. Title / Author lines at the very top of the file are NOT chapters — skip them.

@@ -214,19 +214,20 @@ def _find_tipo2_positions(text: str) -> List[tuple]:
     return deduped
 
 
-def _find_tipo3_positions(text: str, n_expected: int) -> List[int]:
+def _find_tipo3_series(text: str, n_expected: int) -> List[tuple]:
     """
-    Find character positions of ALL-CAPS headings (≥6 chars, no digits).
+    Find ALL-CAPS chapter headings (≥6 chars, no digits) as (start_char, heading_text) pairs.
 
     Strategy:
-    1. Collect all ALL-CAPS heading candidates.
-    2. Find the dominant heading series by clustering on the first 2 words.
-       A group of ≥2 headings with the same prefix forms a "chapter series".
-    3. Always include PROLOGO/EPILOGO keywords (they're chapter headings even if unique).
-    4. If the resulting set matches n_expected: use it.
-       Otherwise fall back to simple positional trimming.
+    1. Collect all ALL-CAPS heading candidates from the text.
+    2. Cluster by first 2 words. A prefix appearing ≥2 times AND spread across the book
+       (span ≥ 0.5 × avg chapter size) is a "dominant series". This excludes recurring
+       poem stanzas that share a prefix but are clustered in one spot.
+    3. Always include single-occurrence headings that are PROLOGO/EPILOGO keywords.
+    4. Return the filtered series; the caller decides whether to trust n_expected or use
+       the auto-detected count (when the fingerprint is incomplete).
     """
-    from collections import Counter
+    from collections import Counter, defaultdict
 
     pattern = re.compile(
         r'(?:^|\n)[ \t]*([A-Z][A-Z\s\'\"À-ÜÀ-ü\-]{5,})[ \t]*\n'
@@ -242,16 +243,27 @@ def _find_tipo3_positions(text: str, n_expected: int) -> List[int]:
     if not candidates:
         return []
 
-    # Cluster by first 2 words of heading
     prefix_counter: Counter = Counter()
-    for _, htxt in candidates:
+    prefix_positions_map: dict = defaultdict(list)
+    for pos, htxt in candidates:
         words = htxt.split()
         prefix = " ".join(words[:2]) if len(words) >= 2 else words[0] if words else ""
         prefix_counter[prefix] += 1
+        prefix_positions_map[prefix].append(pos)
 
-    # Build set of "series" headings: dominant (≥2 occurrences) + PROLOGO/EPILOGO
+    avg_chapter_len = len(text) / n_expected if n_expected > 0 else len(text)
     _prologo_kw = {"PROLOGO", "EPILOGO", "PROLOGUE", "EPILOGUE", "PROLOGO:", "EPILOGO:"}
-    dominant_prefixes = {p for p, cnt in prefix_counter.items() if cnt >= 2}
+
+    def _is_spread(positions: list) -> bool:
+        if len(positions) < 2:
+            return True
+        span = sorted(positions)[-1] - sorted(positions)[0]
+        return span >= avg_chapter_len * 0.5
+
+    dominant_prefixes = {
+        p for p, cnt in prefix_counter.items()
+        if cnt >= 2 and _is_spread(prefix_positions_map[p])
+    }
 
     def _is_chapter_heading(htxt: str) -> bool:
         words = htxt.split()
@@ -262,20 +274,20 @@ def _find_tipo3_positions(text: str, n_expected: int) -> List[int]:
             return True
         return False
 
-    series = [(pos, htxt) for pos, htxt in candidates if _is_chapter_heading(htxt)]
+    return [(pos, htxt) for pos, htxt in candidates if _is_chapter_heading(htxt)]
 
-    if series and len(series) == n_expected:
+
+def _find_tipo3_positions(text: str, n_expected: int) -> List[int]:
+    """Position-only interface (used when caller already has chapter names from fingerprint)."""
+    series = _find_tipo3_series(text, n_expected)
+    if not series:
+        return []
+    if len(series) == n_expected:
         return [s[0] for s in series]
-
-    # Fallback: if series doesn't match, try just all candidates with front-trimming
-    if len(candidates) >= n_expected:
-        # Drop from front until we have n_expected
-        trimmed = candidates
-        while len(trimmed) > n_expected:
-            trimmed = trimmed[1:]
-        return [c[0] for c in trimmed]
-
-    return [c[0] for c in candidates]
+    # Fallback: positional trimming
+    if len(series) > n_expected:
+        return [s[0] for s in series[-n_expected:]]
+    return [s[0] for s in series]
 
 
 def _positional_assign(positions: List[int], chapters: List[dict]) -> List[dict]:
@@ -390,9 +402,23 @@ def build_chapter_boundaries(full_text: str, chapters: List[dict]) -> List[dict]
             structure = "tipo4"
 
     if structure == "tipo3":
-        positions = _find_tipo3_positions(full_text, n)
-        if positions:
-            boundaries = _positional_assign(positions, chapters)
+        series = _find_tipo3_series(full_text, n)
+        if series:
+            positions = [s[0] for s in series]
+            if len(series) == n:
+                # Fingerprint matches detected headings: use fingerprint names (richer)
+                boundaries = _positional_assign(positions, chapters)
+            elif len(series) > n:
+                # Auto-discovery: fingerprint is incomplete (Stage 0.1 missed chapters)
+                logger.warning(
+                    f"Tipo3 auto-discovery: {len(series)} headings detected, "
+                    f"fingerprint has {n}. Using auto-detected boundaries."
+                )
+                auto_chapters = [{"title": htxt.title(), "name": htxt} for _, htxt in series]
+                boundaries = _positional_assign(positions, auto_chapters)
+            else:
+                # Fewer headings than expected: positional assign with available
+                boundaries = _positional_assign(positions, chapters[:len(series)])
         else:
             structure = "tipo4"
 

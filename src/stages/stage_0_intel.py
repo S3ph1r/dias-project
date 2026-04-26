@@ -52,7 +52,7 @@ class Stage0Intelligence(BaseStage):
     def _run_discovery(self, project_id: str, text_content: str) -> Optional[Dict[str, Any]]:
         """Step 0.1: Discover book structure and structural punctuation mechanics."""
         self.logger.info(f"Step 0.1: Starting Structural Discovery for {project_id}...")
-        discovery_prompt_path = "config/prompts/stage_0/0.1_discovery_v1.2.yaml"
+        discovery_prompt_path = "config/prompts/stage_0/0.1_discovery_v1.3.yaml"
         discovery_prompt_data = self._load_prompt(discovery_prompt_path)
         template = discovery_prompt_data.get('prompt_template', '')
         
@@ -211,7 +211,13 @@ class Stage0Intelligence(BaseStage):
             # Merge metadati estesi
             if "metadata" in intel_data:
                 fp_data["metadata"].update(intel_data["metadata"])
-            
+
+            # Merge chapters from Stage 0.2 (has 'title' + 'summary', preferred by pipeline)
+            # Stage 0.1 produces 'chapters_list' with 'name'; Stage 0.2 produces 'chapters'
+            # with 'title'. Keep both keys for backward compat; pipeline prefers 'chapters'.
+            if "chapters" in intel_data and intel_data["chapters"]:
+                fp_data["chapters"] = intel_data["chapters"]
+
             # Merge casting dossier (quello che la Dashboard aspetta)
             fp_data["casting"] = intel_data.get("casting", {})
             fp_data["sound_design"] = intel_data.get("sound_design", {})
