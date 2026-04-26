@@ -240,6 +240,7 @@
       const result = await resumePipeline(project.id, selectedVoice || undefined);
       alert(`Pipeline ripresa! Inviati ${result.pushed_count} task ad ARIA.`);
       await loadData(true);
+      await pollLiveStatus();
     } catch (e) {
       alert(`Errore: ${(e as Error).message}`);
     } finally {
