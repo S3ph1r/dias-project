@@ -242,11 +242,6 @@ export async function fetchProjectLiveStatus(id: string): Promise<ProjectLiveSta
     return res.json();
 }
 
-export async function clearPipelinePause(projectId: string): Promise<{ status: string; message: string }> {
-    const res = await fetch(`${API_BASE}/projects/${projectId}/unpause`, { method: 'POST' });
-    if (!res.ok) throw new Error('Failed to clear pause');
-    return res.json();
-}
 
 export interface AudiobookChapter {
     title: string;

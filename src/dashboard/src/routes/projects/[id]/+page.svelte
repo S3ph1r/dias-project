@@ -7,7 +7,7 @@
     fetchProjectDetails, pushSceneToStageD, fetchVoices, resumePipeline,
     checkResume, resetStage, fetchChapters, fetchFingerprint, fetchPreproduction,
     analyzeProject, fetchWorkerStatus, triggerAudiobookMaster, fetchProjectLiveStatus,
-    fetchAudiobookChapters, clearPipelinePause,
+    fetchAudiobookChapters,
     API_BASE,
     type Project, type ProjectStage, type ChapterSummary, type Fingerprint,
     type PreproductionData, type AudiobookChapter
@@ -38,7 +38,6 @@
   let selectedVoice = $state<string | null>(null);
   let workerStatus = $state<Record<string, 'running' | 'stopped'>>({});
   let pausedReason = $state<string | null>(null);
-  let unpausing = $state(false);
 
   // Audiobook player state
   let audiobookChapters = $state<AudiobookChapter[]>([]);
@@ -79,7 +78,11 @@
   const isPipelinePaused = $derived(!!pausedReason);
   const activeWorkerName = $derived(
     isPipelinePaused ? 'Paused' :
-    workerStatus.orchestrator !== 'running' ? (project?.status === 'completed' ? 'Completed' : 'Pipeline Idle') :
+    !isPipelineRunning ? (
+      project?.status === 'completed' ? 'Completed' :
+      (project?.overall_progress ?? 0) > 0 ? 'Stopped' :
+      'Pipeline Idle'
+    ) :
     (project?.active_stage === 'stage_a' ? 'Stage A' :
      project?.active_stage === 'stage_b' ? 'Stage B' :
      project?.active_stage === 'stage_c' ? 'Stage C' :
@@ -237,28 +240,13 @@
         const msg = `ATTENZIONE: ${counts}.\n\nVoce selezionata: '${selectedVoice || 'default'}'. Continuare?`;
         if (!confirm(msg)) return;
       }
-      const result = await resumePipeline(project.id, selectedVoice || undefined);
-      alert(`Pipeline ripresa! Inviati ${result.pushed_count} task ad ARIA.`);
+      await resumePipeline(project.id, selectedVoice || undefined);
       await loadData(true);
-      await pollLiveStatus();
     } catch (e) {
       alert(`Errore: ${(e as Error).message}`);
     } finally {
       resuming = false;
-    }
-  };
-
-  const handleClearPause = async () => {
-    if (!project) return;
-    unpausing = true;
-    try {
-      const result = await clearPipelinePause(project.id);
-      pausedReason = null;
-      alert(result.message);
-    } catch (e) {
-      alert(`Errore: ${(e as Error).message}`);
-    } finally {
-      unpausing = false;
+      await pollLiveStatus();
     }
   };
 
@@ -401,52 +389,41 @@
 
       {#if project && (project.overall_progress ?? 0) < 100}
         <div class="flex items-center gap-3">
-          <!-- Status pill: amber when paused, green when running, grey when idle -->
-          <div class="flex items-center gap-2 px-3 py-1.5 rounded-full {
-            isPipelinePaused ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+          <!-- Status pill -->
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest shadow-lg {
+            isPipelinePaused    ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+            activeWorkerName === 'Stopped' ? 'bg-red-500/10 border-red-500/30 text-red-400' :
             activeWorkerName === 'Pipeline Idle' ? 'bg-slate-800 border-slate-700 text-slate-500' :
-            activeWorkerName === 'Completed' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
             'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 animate-pulse'
-          } border text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/5">
-            <div class="{isPipelinePaused ? 'w-1.5 h-1.5 rounded-full bg-amber-500' : activeWorkerName === 'Pipeline Idle' ? 'w-1.5 h-1.5 rounded-full bg-slate-600' : 'w-1.5 h-1.5 rounded-full bg-emerald-500'}"></div>
+          }">
+            <div class="w-1.5 h-1.5 rounded-full {
+              isPipelinePaused    ? 'bg-amber-500' :
+              activeWorkerName === 'Stopped' ? 'bg-red-500' :
+              activeWorkerName === 'Pipeline Idle' ? 'bg-slate-600' :
+              'bg-emerald-500'
+            }"></div>
             {activeWorkerName}
           </div>
 
-          {#if isPipelinePaused}
-            <!-- Pause banner + unlock button -->
-            <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] font-semibold max-w-xs truncate" title={pausedReason ?? ''}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              {pausedReason}
-            </div>
-            <button
-              onclick={handleClearPause}
-              disabled={unpausing}
-              class="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 text-xs font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-amber-500/20"
-            >
-              {#if unpausing}
-                <div class="w-3.5 h-3.5 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin"></div>
-                Sbloccando...
-              {:else}
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
-                Sblocca Pausa
-              {/if}
-            </button>
-          {:else}
-            <!-- Normal start/resume button -->
-            <button
-              onclick={handleResumePipeline}
-              disabled={resuming || isPipelineRunning}
-              class="px-6 py-2.5 rounded-xl {isPipelineRunning ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-sky-500 hover:bg-sky-400 text-white shadow-lg shadow-sky-500/20'} text-xs font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
-            >
-              {#if resuming}
-                <div class="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                Resuming...
-              {:else}
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>
-                {(project?.overall_progress ?? 0) === 0 ? 'Start Production' : 'Resume Pipeline'}
-              {/if}
-            </button>
-          {/if}
+          <!-- Resume button — unico, comportamento smart -->
+          <button
+            onclick={handleResumePipeline}
+            disabled={resuming || (isPipelineRunning && !isPipelinePaused)}
+            title={isPipelinePaused ? (pausedReason ?? '') : ''}
+            class="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 {
+              (isPipelineRunning && !isPipelinePaused) ? 'bg-slate-800 text-slate-500 cursor-not-allowed' :
+              isPipelinePaused ? 'bg-amber-500 hover:bg-amber-400 text-slate-900 shadow-lg shadow-amber-500/20' :
+              'bg-sky-500 hover:bg-sky-400 text-white shadow-lg shadow-sky-500/20'
+            }"
+          >
+            {#if resuming}
+              <div class="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin"></div>
+              Resuming...
+            {:else}
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>
+              {(project?.overall_progress ?? 0) === 0 ? 'Start Production' : 'Resume Pipeline'}
+            {/if}
+          </button>
         </div>
     {:else if project}
         <div class="px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">

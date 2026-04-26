@@ -805,25 +805,29 @@ async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = Non
             logger.info(f"Saving persistent voice override '{voice_override}' for project {clean_title}")
             redis_client.client.hset(f"dias:project:{clean_title}:config", "voice_id", voice_override)
 
-        # --- ORCHESTRATOR AUTO-START ---
+        # --- CLEAR GLOBAL PAUSE (se presente) ---
+        paused_raw = redis_client.get("dias:status:paused")
+        if paused_raw:
+            redis_client.client.delete("dias:status:paused")
+            logger.info(f"Global pause cleared for project {clean_title}")
+
+        # --- ORCHESTRATOR AUTO-START (solo se non già in esecuzione) ---
         import subprocess
         try:
-            # Flexible pattern to match both module style (dots) and script style (slashes)
             search_pattern = f"src[./]common[./]orchestrator.*{clean_title}"
             pgrep_check = subprocess.run(["pgrep", "-f", search_pattern], capture_output=True)
             if pgrep_check.returncode != 0:
-                logger.info(f"🚀 Avvio Orchestratore (modulo) in background per {clean_title}...")
+                logger.info(f"🚀 Avvio Orchestratore in background per {clean_title}...")
                 python_bin = BASE_DIR / ".venv" / "bin" / "python3"
                 log_file = BASE_DIR / "logs" / "orchestrator.log"
                 cmd = f"nohup {python_bin} -m src.common.orchestrator {clean_title} >> {log_file} 2>&1 &"
                 subprocess.Popen(cmd, shell=True, cwd=BASE_DIR)
             else:
-                logger.info(f"✅ Orchestratore già attivo per {clean_title}.")
+                logger.info(f"✅ Orchestratore già attivo per {clean_title}, pausa rimossa.")
         except Exception as e:
             logger.error(f"Errore durante l'avvio dell'orchestratore: {e}")
 
-        logger.info(f"Pipeline flow delegated to Serial Orchestrator for {clean_title}")
-        return {"status": "success", "message": f"Orchestrator started for {clean_title}"}
+        return {"status": "success", "message": f"Pipeline resumed for {clean_title}"}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
