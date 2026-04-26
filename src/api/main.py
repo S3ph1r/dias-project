@@ -608,6 +608,22 @@ async def get_project_live_status(project_id: str) -> Dict[str, Any]:
     paused_raw = redis_client.get("dias:status:paused")
     paused_reason = (paused_raw.decode('utf-8') if isinstance(paused_raw, bytes) else paused_raw) if paused_raw else None
 
+    # Active stage worker running check
+    _worker_scripts = {
+        "stage_a": "stage_a_text_ingester.py",
+        "stage_b": "stage_b_semantic_analyzer.py",
+        "stage_c": "stage_c_scene_director.py",
+        "stage_d": "stage_d_voice_gen.py",
+    }
+    worker_running = False
+    if active_stage and active_stage in _worker_scripts:
+        try:
+            _script = _worker_scripts[active_stage]
+            out = subprocess.check_output(f"pgrep -f 'python.*{_script}'", shell=True).decode()
+            worker_running = bool(out.strip())
+        except subprocess.CalledProcessError:
+            worker_running = False
+
     # Stage D voice progress: WAV done vs scene JSON total (scene-*.json only)
     stage_d_dir = project_dir / "stages" / "stage_d" / "output"
     stage_c_dir = project_dir / "stages" / "stage_c" / "output"
@@ -619,6 +635,7 @@ async def get_project_live_status(project_id: str) -> Dict[str, Any]:
         "status": project_status,
         "active_stage": active_stage,
         "orchestrator_running": orchestrator_running,
+        "worker_running": worker_running,
         "paused_reason": paused_reason,
         "voice_done": voice_done,
         "voice_total": voice_total,

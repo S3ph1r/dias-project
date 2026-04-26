@@ -38,6 +38,7 @@
   let selectedVoice = $state<string | null>(null);
   let workerStatus = $state<Record<string, 'running' | 'stopped'>>({});
   let pausedReason = $state<string | null>(null);
+  let workerRunning = $state(false);
 
   // Audiobook player state
   let audiobookChapters = $state<AudiobookChapter[]>([]);
@@ -76,6 +77,7 @@
   const voiceIds = $derived(Object.keys(voices).sort());
   const isPipelineRunning = $derived(workerStatus.orchestrator === 'running');
   const isPipelinePaused = $derived(!!pausedReason);
+  const isWorkerActive = $derived(isPipelineRunning && workerRunning && !isPipelinePaused);
   const activeWorkerName = $derived(
     isPipelinePaused ? 'Paused' :
     !isPipelineRunning ? (
@@ -83,6 +85,7 @@
       (project?.overall_progress ?? 0) > 0 ? 'Stopped' :
       'Pipeline Idle'
     ) :
+    !workerRunning ? 'Stopped' :
     (project?.active_stage === 'stage_a' ? 'Stage A' :
      project?.active_stage === 'stage_b' ? 'Stage B' :
      project?.active_stage === 'stage_c' ? 'Stage C' :
@@ -170,6 +173,7 @@
       if (JSON.stringify(workerStatus) !== JSON.stringify(nextWorkers)) {
         workerStatus = nextWorkers;
       }
+      workerRunning = live.worker_running ?? false;
       pausedReason = live.paused_reason ?? null;
     } catch (e) {
       // Non-critical — swallow poll errors silently
@@ -181,7 +185,7 @@
 
     const startPolling = () => {
       clearInterval(refreshInterval);
-      refreshInterval = setInterval(pollLiveStatus, 60000);
+      refreshInterval = setInterval(pollLiveStatus, 10000);
     };
 
     const handleVisibilityChange = () => {
@@ -391,16 +395,17 @@
         <div class="flex items-center gap-3">
           <!-- Status pill -->
           <div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest shadow-lg {
-            isPipelinePaused    ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+            isPipelinePaused ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
             activeWorkerName === 'Stopped' ? 'bg-red-500/10 border-red-500/30 text-red-400' :
             activeWorkerName === 'Pipeline Idle' ? 'bg-slate-800 border-slate-700 text-slate-500' :
-            'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 animate-pulse'
+            isWorkerActive ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 animate-pulse' :
+            'bg-slate-800 border-slate-700 text-slate-500'
           }">
             <div class="w-1.5 h-1.5 rounded-full {
-              isPipelinePaused    ? 'bg-amber-500' :
+              isPipelinePaused ? 'bg-amber-500' :
               activeWorkerName === 'Stopped' ? 'bg-red-500' :
-              activeWorkerName === 'Pipeline Idle' ? 'bg-slate-600' :
-              'bg-emerald-500'
+              isWorkerActive ? 'bg-emerald-500' :
+              'bg-slate-600'
             }"></div>
             {activeWorkerName}
           </div>
@@ -408,10 +413,10 @@
           <!-- Resume button — unico, comportamento smart -->
           <button
             onclick={handleResumePipeline}
-            disabled={resuming || (isPipelineRunning && !isPipelinePaused)}
+            disabled={resuming || isWorkerActive}
             title={isPipelinePaused ? (pausedReason ?? '') : ''}
             class="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 {
-              (isPipelineRunning && !isPipelinePaused) ? 'bg-slate-800 text-slate-500 cursor-not-allowed' :
+              isWorkerActive ? 'bg-slate-800 text-slate-500 cursor-not-allowed' :
               isPipelinePaused ? 'bg-amber-500 hover:bg-amber-400 text-slate-900 shadow-lg shadow-amber-500/20' :
               'bg-sky-500 hover:bg-sky-400 text-white shadow-lg shadow-sky-500/20'
             }"

@@ -231,6 +231,7 @@ export interface ProjectLiveStatus {
     status: string;
     active_stage: string | null;
     orchestrator_running: boolean;
+    worker_running: boolean;
     paused_reason: string | null;
     voice_done: number;
     voice_total: number;
