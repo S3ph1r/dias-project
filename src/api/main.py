@@ -809,8 +809,7 @@ async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = Non
             if pgrep_check.returncode != 0:
                 logger.info(f"🚀 Avvio Orchestratore (modulo) in background per {clean_title}...")
                 python_bin = BASE_DIR / ".venv" / "bin" / "python3"
-                
-                # Use module mode (-m) for professional-grade import handling
+                log_file = BASE_DIR / "logs" / "orchestrator.log"
                 cmd = f"nohup {python_bin} -m src.common.orchestrator {clean_title} >> {log_file} 2>&1 &"
                 subprocess.Popen(cmd, shell=True, cwd=BASE_DIR)
             else:
