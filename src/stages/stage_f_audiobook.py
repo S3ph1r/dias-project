@@ -114,9 +114,9 @@ def build_audiobook(project_id: str):
             logger.warning(f"Impossibile caricare fingerprint: {e}")
 
     # 2b. Leggi Mapping Scene -> dati dalla Scene Grid (Stage C)
-    # Stage C scrive un file JSON per ogni scena (non raggruppati).
-    # Il chapter_id da Stage C è hardcodato (bug upstream); usiamo scene_label + text_content
-    # per rilevare i confini capitolo dalle scene "Narratore — titolo".
+    # Stage C propaga chapter_id in ogni scena (dal boundaries file via Stage A).
+    # Lo usiamo come sorgente primaria; il text-based detection rimane come fallback
+    # per progetti precedenti senza chapter_id nei JSON di scena.
     scene_data: Dict[str, Dict] = {}
 
     for jf in stage_c_dir.glob("*.json"):
@@ -129,11 +129,31 @@ def build_audiobook(project_id: str):
                     "pause_after_ms": data.get("pause_after_ms", 1000),
                     "scene_label": data.get("scene_label", ""),
                     "text_content": data.get("text_content", ""),
+                    "chapter_id": data.get("chapter_id"),
                 }
         except Exception:
             pass
 
     logger.info(f"Mappate {len(scene_data)} scene da Stage C")
+
+    # 2c. Integra chapter_boundaries.json per i nomi dei capitoli auto-discovered
+    # (capitoli che chapter_detector ha trovato ma che non sono nel fingerprint parziale)
+    boundaries_path = project_root / "chapter_boundaries.json"
+    if boundaries_path.exists():
+        try:
+            with open(boundaries_path, "r", encoding="utf-8") as f:
+                boundaries_data = json.load(f)
+            added = 0
+            for b in boundaries_data:
+                cid = b.get("chapter_id")
+                name = b.get("name", "")
+                if cid and name and cid not in chapter_titles:
+                    chapter_titles[cid] = name
+                    added += 1
+            if added:
+                logger.info(f"Integrati {added} capitoli da chapter_boundaries.json")
+        except Exception as e:
+            logger.warning(f"Impossibile caricare chapter_boundaries.json: {e}")
 
     # 3. Costruzione Metadata & Concat List
     with open(concat_txt, "w", encoding="utf-8") as cfile:
@@ -156,64 +176,65 @@ def build_audiobook(project_id: str):
 
         info = scene_data.get(scene_id, {})
 
-        # Rileva confine capitolo: scene il cui testo inizia con "Capitolo " e corrisponde
-        # a un sottotitolo del fingerprint (Stage A non propaga chapter_id correttamente).
-        # Usiamo il testo come segnale primario perché scene_label varia ("titolo", "cornice", ecc.)
-        chapter_id = current_chapter  # default: mantieni capitolo corrente
-        text_lower = info.get("text_content", "").strip().lower()
+        # Primary: chapter_id propagated by Stage C (from Stage A chapter_boundaries).
+        # Works for any book structure (Tipo 1/2/3/4) because the boundary was detected
+        # at Stage A time, before any text segmentation.
+        scene_chapter_id = info.get("chapter_id")
+        if scene_chapter_id:
+            chapter_id = scene_chapter_id
+        else:
+            # Fallback for older projects whose scene JSONs predate chapter_id propagation:
+            # re-derive from text content looking for "Capitolo/Chapter/Parte N" patterns.
+            chapter_id = current_chapter
+            text_lower = info.get("text_content", "").strip().lower()
 
-        # Detect chapter boundary: scene text starts with "capitolo " (or "chapter ")
-        _chapter_keywords = ("capitolo ", "chapter ", "parte ")
-        _starts_with_chapter = any(text_lower.startswith(kw) for kw in _chapter_keywords)
+            _chapter_keywords = ("capitolo ", "chapter ", "parte ")
+            _starts_with_chapter = any(text_lower.startswith(kw) for kw in _chapter_keywords)
 
-        if chapter_titles and _starts_with_chapter:
-            # Strategy 1: subtitle match (text after "Capitolo X: ")
-            matched = False
-            for subtitle, cid in subtitle_to_chapter.items():
-                if subtitle and subtitle in text_lower:
-                    chapter_id = cid
-                    matched = True
-                    break
-
-            if not matched:
-                # Strategy 2: ordinal extraction — Italian cardinal or Roman numeral
-                _IT_CARD = {
-                    "uno": 1, "due": 2, "tre": 3, "quattro": 4, "cinque": 5,
-                    "sei": 6, "sette": 7, "otto": 8, "nove": 9, "dieci": 10,
-                    "undici": 11, "dodici": 12, "tredici": 13, "quattordici": 14,
-                    "quindici": 15, "sedici": 16, "diciassette": 17, "diciotto": 18,
-                    "diciannove": 19, "venti": 20, "ventuno": 21, "ventidue": 22,
-                    "ventitré": 23, "ventitre": 23, "ventiquattro": 24, "venticinque": 25,
-                    "ventisei": 26, "ventisette": 27, "ventotto": 28,
-                    "primo": 1, "secondo": 2, "terzo": 3, "quarto": 4, "quinto": 5,
-                    "sesto": 6, "settimo": 7, "ottavo": 8, "nono": 9, "decimo": 10,
-                    "undicesimo": 11, "dodicesimo": 12, "tredicesimo": 13,
-                    "quattordicesimo": 14, "quindicesimo": 15, "sedicesimo": 16,
-                    "diciassettesimo": 17, "diciottesimo": 18, "diciannovesimo": 19,
-                }
-                # Strip the keyword prefix and extract first token
-                remaining = text_lower
-                for kw in _chapter_keywords:
-                    if remaining.startswith(kw):
-                        remaining = remaining[len(kw):]
+            if chapter_titles and _starts_with_chapter:
+                # Strategy 1: subtitle match (text after "Capitolo X: ")
+                matched = False
+                for subtitle, cid in subtitle_to_chapter.items():
+                    if subtitle and subtitle in text_lower:
+                        chapter_id = cid
+                        matched = True
                         break
-                first_token = remaining.split()[0].rstrip(":.,") if remaining.split() else ""
 
-                # Try Italian cardinal
-                num = _IT_CARD.get(first_token)
-                # Try Roman numeral
-                if num is None:
-                    num = _ROMAN_MAP.get(first_token.upper())
-                # Try plain integer
-                if num is None:
-                    try:
-                        num = int(first_token)
-                    except ValueError:
-                        pass
+                if not matched:
+                    # Strategy 2: ordinal extraction — Italian cardinal or Roman numeral
+                    _IT_CARD = {
+                        "uno": 1, "due": 2, "tre": 3, "quattro": 4, "cinque": 5,
+                        "sei": 6, "sette": 7, "otto": 8, "nove": 9, "dieci": 10,
+                        "undici": 11, "dodici": 12, "tredici": 13, "quattordici": 14,
+                        "quindici": 15, "sedici": 16, "diciassette": 17, "diciotto": 18,
+                        "diciannove": 19, "venti": 20, "ventuno": 21, "ventidue": 22,
+                        "ventitré": 23, "ventitre": 23, "ventiquattro": 24, "venticinque": 25,
+                        "ventisei": 26, "ventisette": 27, "ventotto": 28,
+                        "primo": 1, "secondo": 2, "terzo": 3, "quarto": 4, "quinto": 5,
+                        "sesto": 6, "settimo": 7, "ottavo": 8, "nono": 9, "decimo": 10,
+                        "undicesimo": 11, "dodicesimo": 12, "tredicesimo": 13,
+                        "quattordicesimo": 14, "quindicesimo": 15, "sedicesimo": 16,
+                        "diciassettesimo": 17, "diciottesimo": 18, "diciannovesimo": 19,
+                    }
+                    remaining = text_lower
+                    for kw in _chapter_keywords:
+                        if remaining.startswith(kw):
+                            remaining = remaining[len(kw):]
+                            break
+                    first_token = remaining.split()[0].rstrip(":.,") if remaining.split() else ""
 
-                if num and num in ordinal_to_chapter:
-                    chapter_id = ordinal_to_chapter[num]
-                    logger.debug(f"Ordinal fallback: '{first_token}' → {num} → {chapter_id}")
+                    num = _IT_CARD.get(first_token)
+                    if num is None:
+                        num = _ROMAN_MAP.get(first_token.upper())
+                    if num is None:
+                        try:
+                            num = int(first_token)
+                        except ValueError:
+                            pass
+
+                    if num and num in ordinal_to_chapter:
+                        chapter_id = ordinal_to_chapter[num]
+                        logger.debug(f"Ordinal fallback: '{first_token}' → {num} → {chapter_id}")
 
         # Primo WAV: inizializza capitolo di default se nessun marker trovato
         if chapter_id is None:
