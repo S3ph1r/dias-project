@@ -26,6 +26,7 @@
   let resuming = $state(false);
   let autoRefreshEnabled = $state(true);
   let refreshInterval: any;
+  let eventSource: EventSource | null = null;
   let activeTab = $state<'chapters' | 'stages' | 'preproduction' | 'audiobook'>('chapters');
   let expandedChunks = $state(new Set<string>());
   let expandedScenes = $state(new Set<string>());
@@ -39,6 +40,7 @@
   let workerStatus = $state<Record<string, 'running' | 'stopped'>>({});
   let pausedReason = $state<string | null>(null);
   let workerRunning = $state(false);
+  let orchestratorRunning = $state(false);
 
   // Audiobook player state
   let audiobookChapters = $state<AudiobookChapter[]>([]);
@@ -75,7 +77,8 @@
 
   // Derived sorted list of voice IDs for backwards compatibility and UI loops
   const voiceIds = $derived(Object.keys(voices).sort());
-  const isPipelineRunning = $derived(workerStatus.orchestrator === 'running');
+  // Source of truth: stato pubblicato dall'orchestratore in Redis (via live status endpoint)
+  const isPipelineRunning = $derived(orchestratorRunning);
   const isPipelinePaused = $derived(!!pausedReason);
   const isWorkerActive = $derived(isPipelineRunning && workerRunning && !isPipelinePaused);
   const activeWorkerName = $derived(
@@ -169,10 +172,7 @@
       if (project) {
         project = { ...project, status: live.status, active_stage: live.active_stage };
       }
-      const nextWorkers = { ...workerStatus, orchestrator: live.orchestrator_running ? 'running' as const : 'stopped' as const };
-      if (JSON.stringify(workerStatus) !== JSON.stringify(nextWorkers)) {
-        workerStatus = nextWorkers;
-      }
+      orchestratorRunning = live.orchestrator_running ?? false;
       workerRunning = live.worker_running ?? false;
       pausedReason = live.paused_reason ?? null;
     } catch (e) {
@@ -201,9 +201,23 @@
     document.addEventListener('visibilitychange', handleVisibilityChange);
     startPolling();
 
+    // SSE: receive push events from the backend and poll immediately
+    const connectSSE = () => {
+      eventSource?.close();
+      eventSource = new EventSource(`/api/projects/${page.params.id}/events`);
+      eventSource.onmessage = () => { pollLiveStatus(); };
+      eventSource.onerror = () => {
+        // EventSource reconnects automatically; close and retry after 5s on repeated failures
+        eventSource?.close();
+        setTimeout(connectSSE, 5000);
+      };
+    };
+    connectSSE();
+
     return () => {
       clearInterval(refreshInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      eventSource?.close();
     };
   });
 
@@ -245,6 +259,9 @@
         if (!confirm(msg)) return;
       }
       await resumePipeline(project.id, selectedVoice || undefined);
+      // Optimistic update: show running state immediately without waiting for next poll
+      orchestratorRunning = true;
+      pausedReason = null;
       await loadData(true);
     } catch (e) {
       alert(`Errore: ${(e as Error).message}`);

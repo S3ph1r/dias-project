@@ -1,7 +1,8 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
+import asyncio
 import os
 
 # Sub-path support: set DIAS_APP_BASE=/dias when served behind a reverse proxy
@@ -572,9 +573,9 @@ async def get_project_status(project_id: str) -> Dict[str, Any]:
 @api_router.get("/projects/{project_id}/status/live")
 async def get_project_live_status(project_id: str) -> Dict[str, Any]:
     """
-    Lightweight polling endpoint — returns only counters, no file lists.
-    Use this for frontend auto-refresh instead of the full /projects/{id} endpoint.
-    Typical response size: ~200 bytes vs ~270KB for the full endpoint.
+    Lightweight polling endpoint.
+    Legge lo stato pubblicato direttamente dall'orchestratore (source of truth).
+    Nessun pgrep — zero false positive.
     """
     project_dir = get_project_dir(project_id)
     if not project_dir.exists():
@@ -592,43 +593,34 @@ async def get_project_live_status(project_id: str) -> Dict[str, Any]:
         except Exception:
             pass
 
-    # Active stage from Redis
-    active_stage_raw = redis_client.get(f"dias:project:{actual_project_id}:active_stage")
-    active_stage = (active_stage_raw.decode('utf-8') if isinstance(active_stage_raw, bytes) else active_stage_raw) if active_stage_raw else None
-
-    # Orchestrator running check
-    import subprocess
-    try:
-        out = subprocess.check_output("pgrep -f 'python.*src.common.orchestrator'", shell=True).decode()
-        orchestrator_running = bool(out.strip())
-    except subprocess.CalledProcessError:
-        orchestrator_running = False
-
-    # Global pause state
-    paused_raw = redis_client.get("dias:status:paused")
-    paused_reason = (paused_raw.decode('utf-8') if isinstance(paused_raw, bytes) else paused_raw) if paused_raw else None
-
-    # Active stage worker running check
-    _worker_scripts = {
-        "stage_a": "stage_a_text_ingester.py",
-        "stage_b": "stage_b_semantic_analyzer.py",
-        "stage_c": "stage_c_scene_director.py",
-        "stage_d": "stage_d_voice_gen.py",
-    }
+    # Stato orchestratore: pubblicato da orchestrator._publish_state() ogni 30s con TTL 120s
+    active_stage = None
+    orchestrator_running = False
     worker_running = False
-    if active_stage and active_stage in _worker_scripts:
-        try:
-            _script = _worker_scripts[active_stage]
-            out = subprocess.check_output(f"pgrep -f 'python.*{_script}'", shell=True).decode()
-            worker_running = bool(out.strip())
-        except subprocess.CalledProcessError:
-            worker_running = False
+    paused_reason = None
 
-    # Stage D voice progress: WAV done vs scene JSON total (scene-*.json only)
+    state_raw = redis_client.get(f"dias:project:{actual_project_id}:orchestrator_state")
+    if state_raw:
+        try:
+            state_str = state_raw.decode('utf-8') if isinstance(state_raw, bytes) else state_raw
+            state = json.loads(state_str)
+            active_stage = state.get("active_stage") if state.get("active_stage") != "none" else None
+            worker_running = state.get("worker_alive", False)
+            paused_reason = state.get("paused_reason")
+            orch_status = state.get("status", "idle")
+            # L'orchestratore è "vivo" se ha pubblicato negli ultimi 90s e non è in stato finale
+            last_updated = datetime.datetime.fromisoformat(state.get("last_updated", "2000-01-01"))
+            age_secs = (datetime.datetime.now() - last_updated).total_seconds()
+            orchestrator_running = age_secs < 90 and orch_status not in ("completed", "idle")
+        except Exception:
+            pass
+
+    # Voice progress: WAV prodotti vs scene totali da Stage C
     stage_d_dir = project_dir / "stages" / "stage_d" / "output"
     stage_c_dir = project_dir / "stages" / "stage_c" / "output"
     voice_done = len(list(stage_d_dir.glob("*.wav"))) if stage_d_dir.exists() else 0
-    voice_total = len([f for f in stage_c_dir.glob("*scene-*.json") if "scenes" not in f.name]) if stage_c_dir.exists() else 0
+    voice_total = len([f for f in stage_c_dir.glob("*scene-*.json")
+                       if "scenes" not in f.name]) if stage_c_dir.exists() else 0
 
     return {
         "project_id": actual_project_id,
@@ -640,6 +632,37 @@ async def get_project_live_status(project_id: str) -> Dict[str, Any]:
         "voice_done": voice_done,
         "voice_total": voice_total,
     }
+
+
+@api_router.get("/projects/{project_id}/events")
+async def project_events_stream(project_id: str, request: Request):
+    """SSE stream: pushes a 'state_change' event whenever the orchestrator changes state."""
+    project_dir = get_project_dir(project_id)
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+    actual_project_id = project_dir.name
+
+    async def event_generator():
+        pubsub = redis_client.client.pubsub()
+        pubsub.subscribe(f"dias:events:{actual_project_id}")
+        try:
+            yield "data: connected\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                message = pubsub.get_message(ignore_subscribe_messages=True, timeout=0)
+                if message and message.get("type") == "message":
+                    yield "data: state_change\n\n"
+                await asyncio.sleep(0.3)
+        finally:
+            pubsub.unsubscribe()
+            pubsub.close()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @api_router.get("/info/quota")
@@ -811,56 +834,87 @@ async def check_resume_status(project_id: str):
 @api_router.post("/projects/{project_id}/resume")
 async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = None):
     """
-    Scans the entire pipeline for the project and enqueues missing tasks.
+    Avvia o riprende la pipeline per il progetto.
+    Gate: richiede che Stage 0 sia stato completato (config.status == analisi_completed).
     """
     try:
         clean_title = persistence.normalize_id(project_id)
-        
-        # --- PERSISTENT SETTINGS (Benchmark Integration) ---
+        project_dir = get_project_dir(project_id)
+
+        # --- PRE-PRODUCTION GATE ---
+        config_path = project_dir / "config.json"
+        if config_path.exists():
+            with open(config_path) as f:
+                cfg = json.load(f)
+            proj_status = cfg.get("status", "")
+            if proj_status not in ("analisi_completed", "processing", "completed"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Analisi Stage 0 richiesta prima di avviare la produzione. Esegui l'analisi dalla dashboard."
+                )
+
+        # --- PERSISTENT SETTINGS ---
         voice_override = payload.get("voice_override") if payload else None
         if voice_override:
             logger.info(f"Saving persistent voice override '{voice_override}' for project {clean_title}")
             redis_client.client.hset(f"dias:project:{clean_title}:config", "voice_id", voice_override)
 
-        # --- CLEAR GLOBAL PAUSE (se presente) ---
-        paused_raw = redis_client.get("dias:status:paused")
+        # --- CLEAR PROJECT PAUSE (se presente) ---
+        pause_key = f"dias:project:{clean_title}:paused"
+        paused_raw = redis_client.get(pause_key)
         if paused_raw:
-            redis_client.client.delete("dias:status:paused")
+            redis_client.client.delete(pause_key)
             logger.info(f"Global pause cleared for project {clean_title}")
 
-        # --- ORCHESTRATOR AUTO-START (solo se non già in esecuzione) ---
-        import subprocess
-        try:
-            search_pattern = f"src[./]common[./]orchestrator.*{clean_title}"
-            pgrep_check = subprocess.run(["pgrep", "-f", search_pattern], capture_output=True)
-            if pgrep_check.returncode != 0:
-                logger.info(f"🚀 Avvio Orchestratore in background per {clean_title}...")
-                python_bin = BASE_DIR / ".venv" / "bin" / "python3"
-                log_file = BASE_DIR / "logs" / "orchestrator.log"
-                cmd = f"nohup {python_bin} -m src.common.orchestrator {clean_title} >> {log_file} 2>&1 &"
-                subprocess.Popen(cmd, shell=True, cwd=BASE_DIR)
-            else:
-                logger.info(f"✅ Orchestratore già attivo per {clean_title}, pausa rimossa.")
-        except Exception as e:
-            logger.error(f"Errore durante l'avvio dell'orchestratore: {e}")
+        # --- ORCHESTRATOR AUTO-START ---
+        # Legge lo stato pubblicato dall'orchestratore stesso (source of truth)
+        state_raw = redis_client.get(f"dias:project:{clean_title}:orchestrator_state")
+        orch_alive = False
+        if state_raw:
+            try:
+                state = json.loads(state_raw.decode('utf-8') if isinstance(state_raw, bytes) else state_raw)
+                last_updated = datetime.datetime.fromisoformat(state.get("last_updated", "2000-01-01"))
+                age_secs = (datetime.datetime.now() - last_updated).total_seconds()
+                orch_alive = age_secs < 90 and state.get("status") not in ("completed", "idle")
+            except Exception:
+                pass
+
+        if not orch_alive:
+            logger.info(f"🚀 Avvio Orchestratore in background per {clean_title}...")
+            python_bin = BASE_DIR / ".venv" / "bin" / "python3"
+            log_file = BASE_DIR / "logs" / "orchestrator.log"
+            # start_new_session=True: sgancia il processo dal cgroup di uvicorn
+            # → sopravvive a systemctl restart dias-api
+            import subprocess
+            with open(log_file, "a") as lf:
+                subprocess.Popen(
+                    [str(python_bin), "-m", "src.common.orchestrator", clean_title],
+                    stdout=lf,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                    cwd=str(BASE_DIR)
+                )
+        else:
+            logger.info(f"✅ Orchestratore già attivo per {clean_title}, pausa rimossa.")
 
         return {"status": "success", "message": f"Pipeline resumed for {clean_title}"}
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/projects/{project_id}/unpause")
 async def unpause_pipeline(project_id: str):
-    """
-    Clears the global pipeline pause (dias:status:paused).
-    The orchestrator will resume its loop automatically within a few seconds.
-    """
-    paused_raw = redis_client.get("dias:status:paused")
+    """Rimuove la pausa progetto-specifica."""
+    clean_title = persistence.normalize_id(project_id)
+    pause_key = f"dias:project:{clean_title}:paused"
+    paused_raw = redis_client.get(pause_key)
     if not paused_raw:
         return {"status": "ok", "message": "Pipeline non era in pausa."}
     reason = paused_raw.decode('utf-8') if isinstance(paused_raw, bytes) else paused_raw
-    redis_client.client.delete("dias:status:paused")
-    logger.info(f"Global pause cleared for project {project_id}. Was: {reason}")
+    redis_client.client.delete(pause_key)
+    logger.info(f"Pause cleared for project {clean_title}. Was: {reason}")
     return {"status": "ok", "message": "Pausa rimossa. L'orchestratore riprenderà entro pochi secondi."}
 
 

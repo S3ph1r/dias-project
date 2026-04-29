@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 import json
 import re
-import datetime # ensure datetime is available for timestamps if needed
+import datetime
 
 from src.common.config import get_config
 from src.common.redis_factory import get_redis_client
@@ -341,56 +341,78 @@ class SerialOrchestrator:
         """Avvia un worker e aspetta che finisca i chunk"""
         stage_id = stage_info["id"]
         total = self.get_total_chunks(stage_id)
-        
+
         logger.info(f"--- 🚀 AVVIO {stage_info['name']} ({stage_id}) ---")
-        
-        # Report status to Redis for Dashboard
+
+        # Backward compat key (ancora letta da alcuni endpoint legacy)
         self.redis.set(f"dias:project:{self.project_id}:active_stage", stage_id)
-        
+
         # Primo popolamento (Resume)
         self.repopulate_queue(stage_info)
-        
+
         # Loop di monitoraggio
         while True:
             completed = self.get_completed_chunks(stage_id)
             queue_len = self.redis.llen(stage_info["queue"])
-            
+            progress = {"completed": completed, "total": total}
+
             logger.info(f"[{stage_id}] Progress: {completed}/{total} | Queue: {queue_len}")
-            
+
             if completed >= total and queue_len == 0:
                 logger.info(f"✅ {stage_info['name']} COMPLETATO con successo.")
-                # Aggiornamento automatico dello stato del progetto nel config.json
+                self._publish_state(stage_id, "completed", False, progress=progress)
                 self.persistence.update_project_config({"last_stage": stage_id, "status": "processing"})
                 break
-                
-            # Verifica se la pipeline è in PAUSA GLOBALE
-            paused_reason = self.redis.get("dias:status:paused")
+
+            # Chiave pausa progetto-specifica
+            paused_reason = self.redis.get(f"dias:project:{self.project_id}:paused")
+            worker_alive = self._is_worker_running(stage_info)
+
             if paused_reason:
                 logger.warning(f"⚠️ PIPELINE PAUSATA: {paused_reason}")
-                logger.warning("L'orchestratore rimarrà in attesa. Rimuovi 'dias:status:paused' in Redis per riprendere.")
+                self._publish_state(stage_id, "paused", worker_alive,
+                                    paused_reason=paused_reason, progress=progress)
             else:
-                # Verifica se il processo è attivo, altrimenti avvialo (solo se NON in pausa)
-                if not self._is_worker_running(stage_info):
+                if not worker_alive:
                     logger.info(f"Worker {stage_id} non attivo. Lo avvio...")
                     self._start_worker(stage_info["script"])
-            
-            # Special Stage A Wait: if Stage A just started, wait a bit for total to become > 1 for next stages
+                    worker_alive = True
+                self._publish_state(stage_id, "running", worker_alive, progress=progress)
+
             if stage_id == "stage_a" and completed == 0:
                 time.sleep(10)
-            
-            time.sleep(30) # Monitoraggio ogni 30s
+
+            time.sleep(30)
 
     def _is_worker_running(self, stage_info: Dict[str, Any]) -> bool:
         """Controlla se esiste un processo del worker specifico basandosi sul percorso dello script"""
         script_path = stage_info["script"]
         try:
-            # Match specifically the script name to avoid false positives with other grep
-            # including the orchestrator's own command line
             cmd = f"ps aux | grep '{script_path}' | grep -v grep"
             output = subprocess.check_output(cmd, shell=True).decode()
             return len(output.strip()) > 0
         except subprocess.CalledProcessError:
             return False
+
+    def _publish_state(self, stage_id: str, status: str, worker_alive: bool,
+                       paused_reason=None, progress=None):
+        """Pubblica lo stato corrente dell'orchestrator in Redis (TTL 120s)."""
+        state = {
+            "active_stage": stage_id,
+            "status": status,
+            "worker_alive": worker_alive,
+            "paused_reason": paused_reason if paused_reason else None,
+            "progress": progress or {},
+            "last_updated": datetime.datetime.now().isoformat(),
+        }
+        key = f"dias:project:{self.project_id}:orchestrator_state"
+        self.redis.client.setex(key, 120, json.dumps(state))
+        # Push event for SSE clients on meaningful transitions
+        if status in ("starting", "running", "paused", "completed"):
+            try:
+                self.redis.client.publish(f"dias:events:{self.project_id}", status)
+            except Exception:
+                pass
 
     def _start_worker(self, script_path: str):
         """Avvia lo script dello stadio in background"""
@@ -414,7 +436,10 @@ class SerialOrchestrator:
     def run(self, limit_stage: Optional[str] = None):
         """Esegue la pipeline in modo sequenziale, opzionalmente fermandosi a uno stadio."""
         logger.info(f"=== 🎭 DIAS SERIAL ORCHESTRATOR: {self.project_id} ===")
-        
+
+        # Stato iniziale visibile alla dashboard immediatamente
+        self._publish_state("none", "starting", False)
+
         # Pulizia iniziale
         self.stop_all_workers()
         
@@ -439,8 +464,8 @@ class SerialOrchestrator:
         if not limit_stage or limit_stage == self.stages[-1]["id"]:
             logger.info(f"✨ Progetto {self.project_id} completato con successo!")
             self.redis.delete(f"dias:project:{self.project_id}:active_stage")
-            
-            # Aggiorna lo stato nel config del progetto
+            self._publish_state("none", "completed", False)
+
             config_path = self.persistence.project_root / "config.json"
             if config_path.exists():
                 with open(config_path) as f:
@@ -449,7 +474,7 @@ class SerialOrchestrator:
                 cfg["last_stage"] = self.stages[-1]["id"]
                 with open(config_path, "w") as f:
                     json.dump(cfg, f, indent=4)
-                    
+
             self.stop_all_workers()
             logger.info("👋 Orchestratore terminato. Dashboard pulita.")
 
