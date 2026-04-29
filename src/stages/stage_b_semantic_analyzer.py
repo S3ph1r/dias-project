@@ -246,7 +246,7 @@ class StageBSemanticAnalyzer(BaseStage):
         # Stages simply submit the task and wait for the slot/result.
             
         # Prompt per Gemini API
-        prompt = self._create_semantic_analysis_prompt(text)
+        prompt = self._create_semantic_analysis_prompt(text, message)
         
         # 1. Deterministic Job ID Persistence
         import hashlib
@@ -356,7 +356,7 @@ class StageBSemanticAnalyzer(BaseStage):
             self.logger.error(f"Errore nell'analisi semantica per block {block_id}: {e}")
             raise
     
-    def _create_semantic_analysis_prompt(self, text: str) -> str:
+    def _create_semantic_analysis_prompt(self, text: str, message: Dict[str, Any] = None) -> str:
         """
         Crea prompt per analisi semantica e macro-emotiva con Gemini.
         Carica il template da un file YAML esterno per supportare il versioning.
@@ -375,7 +375,6 @@ class StageBSemanticAnalyzer(BaseStage):
                 prompt_version = prompt_data.get('version', '1.0')
         except Exception as e:
             self.logger.error(f"Impossibile caricare il prompt Stage B da {prompt_full_path}: {e}")
-            # Fallback al prompt hardcoded (copia di sicurezza del v1.0)
             template = """
             Sei un analista narrativo e semantico esperto. Analizza il seguente testo (in Italiano) per estrarre:
             1. Analisi Emotiva: valence, arousal, tension (0.0-1.0) e l'emozione primaria del BLOCCO INTERO.
@@ -386,18 +385,38 @@ class StageBSemanticAnalyzer(BaseStage):
 
         self.logger.info(f"Stage B prompt v{prompt_version} loaded from {prompt_path}")
 
-        # Inject book_language from fingerprint.json (fallback: "Italian")
+        # Inject global context from fingerprint.json
         book_language = "Italian"
+        book_title = "Unknown"
+        book_author = "Unknown"
+        book_tone = "Unknown"
         try:
             fingerprint_path = self.persistence.get_fingerprint_path()
             if fingerprint_path.exists():
                 with open(fingerprint_path, 'r', encoding='utf-8') as f:
                     fp = json.load(f)
-                book_language = fp.get("metadata", {}).get("language", "Italian")
+                fp_meta = fp.get("metadata", {})
+                book_language = fp_meta.get("language", "Italian")
+                book_title = fp_meta.get("title", "Unknown")
+                book_author = fp_meta.get("author", "Unknown")
+                book_tone = fp_meta.get("tone", "Unknown")
         except Exception:
             pass
 
-        return template.replace("{text}", text).replace("{book_language}", book_language)
+        # Chapter position from message (sent by Stage A)
+        block_index = str(message.get("block_index", "?")) if message else "?"
+        total_blocks = str(message.get("total_blocks_in_chapter", "?")) if message else "?"
+        chapter_number = str(message.get("chapter_number", "?")) if message else "?"
+
+        return (template
+                .replace("{text}", text)
+                .replace("{book_language}", book_language)
+                .replace("{book_title}", book_title)
+                .replace("{book_author}", book_author)
+                .replace("{book_tone}", book_tone)
+                .replace("{block_index}", block_index)
+                .replace("{total_blocks_in_chapter}", total_blocks)
+                .replace("{chapter_number}", chapter_number))
     
     def _parse_gemini_response(self, response_text: str) -> Dict[str, Any]:
         """

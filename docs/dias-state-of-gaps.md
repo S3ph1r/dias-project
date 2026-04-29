@@ -42,6 +42,16 @@ Due bug silenziosi nei field `pad_duck_depth` e `pad_fade_speed`:
 
 ---
 
+## ✅ Gap risolti (sessione 2026-04-29 — parte 2)
+
+### Gap V1-5 — Stage B senza contesto globale da Stage 0 ✅ FIXATO
+
+**Problema:** Stage B analizzava ogni macro-chunk senza sapere titolo, autore, tono dell'opera, né posizione nel capitolo. Doveva inferire tutto dal testo grezzo — ridondante rispetto a Stage 0.
+
+**Fix:** Stage B v1.4.0 — iniezione sezione CONTESTO OPERA in apertura: `{book_title}`, `{book_author}`, `{book_tone}` da `fingerprint.json → metadata`, più `{block_index}`, `{total_blocks_in_chapter}`, `{chapter_number}` già presenti nel messaggio Stage A. Aggiunta regola: "Un blocco neutro in un'opera dark è comunque sotto-tensione". ~35 token aggiuntivi per chiamata, nessun cambio allo schema JSON di output.
+
+---
+
 ## ✅ Gap risolti (sessione 2026-04-29)
 
 ### Gap V1-0 — book_language hardcoded in Stage B ✅ FIXATO
