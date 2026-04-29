@@ -270,21 +270,21 @@ class StageBSemanticAnalyzer(BaseStage):
                 }
                 if hasattr(self.config.google, 'response_mime_type'):
                     generate_config["response_mime_type"] = self.config.google.response_mime_type
-                
+
                 # Format contents for Gateway (Gemini 2.x standard)
                 contents = [{"role": "user", "parts": [{"text": prompt}]}]
-                
+
                 response = self.gemini_client.generate_content(
                     contents=contents,
                     model_id=self.model_name,
                     config=generate_config,
                     job_id=job_id  # Pass the stable ID
                 )
-                
+
                 if response["status"] == "error":
                     self.logger.error(f"Gateway Error: {response.get('error')}")
                     raise RuntimeError(f"GATEWAY_ERROR: {response.get('error')}")
-                
+
                 raw_resp = response["output"].get("text", "")
 
                 # --- RAW DUMP FOR DEBUG ---
@@ -297,21 +297,21 @@ class StageBSemanticAnalyzer(BaseStage):
                         f.write(raw_resp)
                 except Exception as e:
                     self.logger.error(f"Failed to save raw dump: {e}")
-                
+
                 # Read back from the saved file as requested (to ensure it matches what we parsed)
                 try:
                     with open(dump_path, "r", encoding="utf-8") as f:
                         response_text = f.read()
                 except Exception:
                     response_text = raw_resp
-            
+
             else:
                 # Mock client
                 response_text = self.gemini_client.generate_content(prompt, model=self.model_name)
-            
+
             # Parse risposta
             analysis_result = self._parse_gemini_response(response_text)
-            
+
             # Assembla MacroAnalysisResult
             def ensure_mapping(item):
                 if hasattr(item, "model_dump"):
@@ -340,20 +340,19 @@ class StageBSemanticAnalyzer(BaseStage):
                     for c in analysis_result.get('concepts', [])
                 ]
             )
-            
+
             return analysis
-            
+
         except Exception as e:
             err_msg = str(e).lower()
             is_transient = any(code in err_msg for code in ["503", "unavailable", "high demand", "429", "timeout", "network"])
-            
+
             if is_transient:
-                # Imposta pausa globale su Redis
-                pause_key = "dias:status:paused"
-                pause_reason = f"Gemini API 503/429 detected in Stage B: {e}. Pausing globally to respect Google pacing."
+                pause_key = f"dias:project:{self.persistence.project_id}:paused"
+                pause_reason = f"Gemini API 503/429 detected in Stage B: {e}. Pausing to respect Google pacing."
                 self.redis.set(pause_key, pause_reason)
-                self.logger.critical(f"🛑 GLOBAL PAUSE SET: {pause_reason}")
-            
+                self.logger.critical(f"🛑 PROJECT PAUSE SET: {pause_reason}")
+
             self.logger.error(f"Errore nell'analisi semantica per block {block_id}: {e}")
             raise
     
@@ -386,7 +385,19 @@ class StageBSemanticAnalyzer(BaseStage):
             self.logger.warning("Usando prompt fallback per Stage B")
 
         self.logger.info(f"Stage B prompt v{prompt_version} loaded from {prompt_path}")
-        return template.replace("{text}", text)
+
+        # Inject book_language from fingerprint.json (fallback: "Italian")
+        book_language = "Italian"
+        try:
+            fingerprint_path = self.persistence.get_fingerprint_path()
+            if fingerprint_path.exists():
+                with open(fingerprint_path, 'r', encoding='utf-8') as f:
+                    fp = json.load(f)
+                book_language = fp.get("metadata", {}).get("language", "Italian")
+        except Exception:
+            pass
+
+        return template.replace("{text}", text).replace("{book_language}", book_language)
     
     def _parse_gemini_response(self, response_text: str) -> Dict[str, Any]:
         """

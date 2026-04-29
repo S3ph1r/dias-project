@@ -12,9 +12,14 @@ google:
   temperature: 0.2
   response_mime_type: "application/json"
 
+stage_0:
+  block_char_limit: 700000     # ~185K token per blocco, safe per free tier 250K/min
+  block_overlap_chars: 2000    # overlap ai bordi per 0.1 Discovery
+  inter_block_delay_s: 65      # attesa DALLA RISPOSTA prima del blocco successivo
+
 # Stage B and C prompt versions (A/B testing)
-stage_b_prompt_path: "config/prompts/stage_b/b_semantic_v1.2.yaml"
-stage_c_prompt_path: "config/prompts/stage_c/c_monastic_v2.4.0.yaml"
+stage_b_prompt_path: "config/prompts/stage_b/b_semantic_v1.3.yaml"
+stage_c_prompt_path: "config/prompts/stage_c/c_monastic_v2.5.0.yaml"
 
 # Local Models (GPU Worker)
 models:

@@ -42,6 +42,28 @@ Due bug silenziosi nei field `pad_duck_depth` e `pad_fade_speed`:
 
 ---
 
+## ✅ Gap risolti (sessione 2026-04-29)
+
+### Gap V1-0 — book_language hardcoded in Stage B ✅ FIXATO
+
+**Problema:** Stage B v1.2 aveva "in ITALIANO" hardcoded nel prompt. Su libri non italiani o capitoli con testo misto (es. Padre Duré's diary in Hyperion) il modello produceva analisi in inglese.
+
+**Fix:** Stage B v1.3.0 — lettura `fingerprint.json → metadata.language`, variabile `{book_language}` nel prompt. Anche Stage B v1.3 rafforza l'istruzione: "rispondi SEMPRE in {book_language} anche se il testo contiene passi in altre lingue".
+
+### Gap V1-1 — Pause semantiche uniformi in Stage C ✅ FIXATO (parziale)
+
+**Problema:** Stage C v2.4.0 produceva `pause_after_ms` prevalentemente nel range 100–200ms per qualsiasi contesto. Nessuna distinzione semantica tra cambio-battuta (50ms), fine-paragrafo (500ms), stacco-narrativo (1000ms).
+
+**Fix:** Stage C v2.5.0 — aggiunta tassonomia pause a 6 livelli in §1 del prompt. Validazione audio necessaria.
+
+### Gap V1-2 — valence/arousal/tension ignorati da Stage C ✅ FIXATO
+
+**Problema:** Stage B estraeva le tre metriche numeriche di intensità emotiva ma non erano esposte nel prompt di Stage C, che non poteva usarle per calibrare ritmo e pause.
+
+**Fix:** Stage C v2.5.0 — esposti come `{tension}`, `{arousal}`, `{valence}` nel blocco CONTESTO. Linea guida: alta tensione → pause più brevi; bassa intensità → pause più lunghe.
+
+---
+
 ## 🟡 Gap residui
 
 ### Gap 2 — Multi-Evento per Scena / AMB Looping (priorità: bassa)
@@ -67,4 +89,21 @@ Due bug silenziosi nei field `pad_duck_depth` e `pad_fade_speed`:
 
 ---
 
-*Documento mantenuto manualmente — aggiornare dopo ogni sessione di fix.*
+### Gap V1-3 — has_dialogue sempre True per scene Narratore (priorità: bassa)
+
+**Problema:** `scene["has_dialogue"] = scene.get("speaker") is not None` — il Narratore ha `speaker = "Narratore"`, quindi tutte le scene narrative risultano `has_dialogue: true`. Se Stage D usa il campo per routing, genera comportamento inatteso.
+
+**Fix necessario:** Cambiare a `scene.get("speaker") not in (None, "Narratore")`. Da fare dopo aver verificato come Stage D usa effettivamente il campo.
+
+---
+
+### Gap V1-4 — Name matching fragile nel voice routing Stage D (priorità: media)
+
+**Problema:** Stage D cerca `casting["speaker"]` in preproduction.json. Se Stage C produce `speaker = "Anya Sharma"` ma il casting ha chiave `"Anya"`, il routing fallisce silenziosamente e il personaggio viene letto dalla voce di default.
+
+**Fix necessario:** Normalizzazione del nome in Stage C (o Stage D) confrontando con i keys di `casting`. Fuzzy match su cognome o prima parola.
+
+---
+
+*Documento mantenuto manualmente — aggiornare dopo ogni sessione di fix.*  
+*Vedi anche: `dias-voice-pipeline-quality.md` per analisi qualitativa completa e priorità v1.*

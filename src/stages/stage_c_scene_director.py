@@ -237,6 +237,11 @@ class TextDirector:
         else:
             audio_cues_str = "  - No specific audio cues for this block."
 
+        # tension/arousal/valence: intensità emotiva numerica da Stage B (usata da v2.5.0+)
+        tension = f"{block_analysis.get('tension', 0.5):.1f}"
+        arousal = f"{block_analysis.get('arousal', 0.5):.1f}"
+        valence = f"{block_analysis.get('valence', 0.5):.1f}"
+
         # ── Sostituzione placeholder nel template ────────────────────────────
         prompt = (
             template
@@ -250,6 +255,9 @@ class TextDirector:
             .replace("{characters_vocal_profiles}", characters_vocal_profiles)
             .replace("{character_relationships}", character_relationships)
             .replace("{audio_cues}", audio_cues_str)
+            .replace("{tension}", tension)
+            .replace("{arousal}", arousal)
+            .replace("{valence}", valence)
             .replace("{text_content}", text_content)
         )
 
