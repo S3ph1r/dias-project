@@ -204,7 +204,7 @@
     // SSE: receive push events from the backend and poll immediately
     const connectSSE = () => {
       eventSource?.close();
-      eventSource = new EventSource(`/api/projects/${page.params.id}/events`);
+      eventSource = new EventSource(`${API_BASE}/projects/${page.params.id}/events`);
       eventSource.onmessage = () => { pollLiveStatus(); };
       eventSource.onerror = () => {
         // EventSource reconnects automatically; close and retry after 5s on repeated failures
