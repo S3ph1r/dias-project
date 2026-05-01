@@ -7,6 +7,7 @@ import os
 import json
 import logging
 import sys
+import time
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 from datetime import datetime
@@ -261,100 +262,117 @@ class StageBSemanticAnalyzer(BaseStage):
         
         job_id = message['job_id']
         
-        try:
-            # Gestisci client Gateway, reale o mock
-            if isinstance(self.gemini_client, GatewayClient):
-                # Client ARIA Gateway
-                generate_config = {
-                    "max_output_tokens": 8192  # Aumentato per supportare il prompt v1.2
-                }
-                if hasattr(self.config.google, 'response_mime_type'):
-                    generate_config["response_mime_type"] = self.config.google.response_mime_type
+        TRANSIENT_CODES = ["503", "unavailable", "high demand", "429", "timeout", "network"]
+        RETRY_DELAYS = [60, 120, 180, 300, 600]  # seconds between attempts 1-5
 
-                # Format contents for Gateway (Gemini 2.x standard)
-                contents = [{"role": "user", "parts": [{"text": prompt}]}]
+        response_text = None
+        last_error = None
 
-                response = self.gemini_client.generate_content(
-                    contents=contents,
-                    model_id=self.model_name,
-                    config=generate_config,
-                    job_id=job_id  # Pass the stable ID
-                )
+        for attempt in range(len(RETRY_DELAYS) + 1):
+            # Use attempt suffix on retries to bypass gateway job-id cache for failed results
+            attempt_job_id = job_id if attempt == 0 else f"{job_id}_r{attempt}"
+            try:
+                if isinstance(self.gemini_client, GatewayClient):
+                    generate_config = {"max_output_tokens": 8192}
+                    if hasattr(self.config.google, 'response_mime_type'):
+                        generate_config["response_mime_type"] = self.config.google.response_mime_type
 
-                if response["status"] == "error":
-                    self.logger.error(f"Gateway Error: {response.get('error')}")
-                    raise RuntimeError(f"GATEWAY_ERROR: {response.get('error')}")
+                    contents = [{"role": "user", "parts": [{"text": prompt}]}]
+                    response = self.gemini_client.generate_content(
+                        contents=contents,
+                        model_id=self.model_name,
+                        config=generate_config,
+                        job_id=attempt_job_id,
+                    )
 
-                raw_resp = response["output"].get("text", "")
+                    if response["status"] == "error":
+                        raise RuntimeError(f"GATEWAY_ERROR: {response.get('error')}")
 
-                # --- RAW DUMP FOR DEBUG ---
-                dump_dir = self.persistence.project_root / "stages" / "stage_b" / "raw_dumps"
-                dump_dir.mkdir(parents=True, exist_ok=True)
-                dump_path = dump_dir / f"{block_id}_raw.txt"
+                    raw_resp = response["output"].get("text", "")
 
-                try:
-                    with open(dump_path, "w", encoding="utf-8") as f:
-                        f.write(raw_resp)
-                except Exception as e:
-                    self.logger.error(f"Failed to save raw dump: {e}")
+                    dump_dir = self.persistence.project_root / "stages" / "stage_b" / "raw_dumps"
+                    dump_dir.mkdir(parents=True, exist_ok=True)
+                    dump_path = dump_dir / f"{block_id}_raw.txt"
+                    try:
+                        with open(dump_path, "w", encoding="utf-8") as f:
+                            f.write(raw_resp)
+                    except Exception:
+                        pass
+                    try:
+                        with open(dump_path, "r", encoding="utf-8") as f:
+                            response_text = f.read()
+                    except Exception:
+                        response_text = raw_resp
 
-                # Read back from the saved file as requested (to ensure it matches what we parsed)
-                try:
-                    with open(dump_path, "r", encoding="utf-8") as f:
-                        response_text = f.read()
-                except Exception:
-                    response_text = raw_resp
+                else:
+                    response_text = self.gemini_client.generate_content(prompt, model=self.model_name)
 
-            else:
-                # Mock client
-                response_text = self.gemini_client.generate_content(prompt, model=self.model_name)
+                last_error = None
+                break  # success
 
-            # Parse risposta
-            analysis_result = self._parse_gemini_response(response_text)
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_transient = any(code in err_msg for code in TRANSIENT_CODES)
 
-            # Assembla MacroAnalysisResult
-            def ensure_mapping(item):
-                if hasattr(item, "model_dump"):
-                    return item.model_dump()
-                return item
+                if is_transient and attempt < len(RETRY_DELAYS):
+                    wait = RETRY_DELAYS[attempt]
+                    self.logger.warning(
+                        f"⚠️ Transient error (attempt {attempt + 1}/{len(RETRY_DELAYS)}), "
+                        f"retrying in {wait}s: {e}"
+                    )
+                    time.sleep(wait)
+                    last_error = e
+                    continue
 
-            analysis = MacroAnalysisResult(
-                job_id=message.get('job_id', f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"),
-                book_id=project_id,
-                block_id=block_id,
-                block_analysis=analysis_result.get('block_analysis') if isinstance(analysis_result.get('block_analysis'), BlockAnalysis) else BlockAnalysis(**ensure_mapping(analysis_result.get('block_analysis', {}))),
-                narrative_markers=[
-                    m if isinstance(m, NarrativeMarker) else NarrativeMarker(**ensure_mapping(m))
-                    for m in analysis_result.get('narrative_markers', [])
-                ],
-                entities=[
-                    e if isinstance(e, SemanticEntity) else SemanticEntity(**ensure_mapping(e))
-                    for e in analysis_result.get('entities', [])
-                ],
-                relations=[
-                    r if isinstance(r, SemanticRelation) else SemanticRelation(**ensure_mapping(r))
-                    for r in analysis_result.get('relations', [])
-                ],
-                concepts=[
-                    c if isinstance(c, SemanticConcept) else SemanticConcept(**ensure_mapping(c))
-                    for c in analysis_result.get('concepts', [])
-                ]
-            )
+                last_error = e
+                break
 
-            return analysis
-
-        except Exception as e:
-            err_msg = str(e).lower()
-            is_transient = any(code in err_msg for code in ["503", "unavailable", "high demand", "429", "timeout", "network"])
-
+        if last_error is not None:
+            err_msg = str(last_error).lower()
+            is_transient = any(code in err_msg for code in TRANSIENT_CODES)
             if is_transient:
                 pause_key = f"dias:project:{self.persistence.project_id}:paused"
-                pause_reason = f"Gemini API 503/429 detected in Stage B: {e}. Pausing to respect Google pacing."
+                pause_reason = (
+                    f"Gemini API 503/429 in Stage B dopo {len(RETRY_DELAYS)} tentativi: {last_error}. "
+                    f"Pausing to respect Google pacing."
+                )
                 self.redis.set(pause_key, pause_reason)
-                self.logger.critical(f"🛑 PROJECT PAUSE SET: {pause_reason}")
+                self.logger.critical(f"🛑 PROJECT PAUSE SET dopo {len(RETRY_DELAYS)} retry: {pause_reason}")
+            self.logger.error(f"Errore nell'analisi semantica per block {block_id}: {last_error}")
+            raise last_error
 
-            self.logger.error(f"Errore nell'analisi semantica per block {block_id}: {e}")
-            raise
+        # Parse risposta
+        analysis_result = self._parse_gemini_response(response_text)
+
+        def ensure_mapping(item):
+            if hasattr(item, "model_dump"):
+                return item.model_dump()
+            return item
+
+        analysis = MacroAnalysisResult(
+            job_id=message.get('job_id', f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"),
+            book_id=project_id,
+            block_id=block_id,
+            block_analysis=analysis_result.get('block_analysis') if isinstance(analysis_result.get('block_analysis'), BlockAnalysis) else BlockAnalysis(**ensure_mapping(analysis_result.get('block_analysis', {}))),
+            narrative_markers=[
+                m if isinstance(m, NarrativeMarker) else NarrativeMarker(**ensure_mapping(m))
+                for m in analysis_result.get('narrative_markers', [])
+            ],
+            entities=[
+                e if isinstance(e, SemanticEntity) else SemanticEntity(**ensure_mapping(e))
+                for e in analysis_result.get('entities', [])
+            ],
+            relations=[
+                r if isinstance(r, SemanticRelation) else SemanticRelation(**ensure_mapping(r))
+                for r in analysis_result.get('relations', [])
+            ],
+            concepts=[
+                c if isinstance(c, SemanticConcept) else SemanticConcept(**ensure_mapping(c))
+                for c in analysis_result.get('concepts', [])
+            ]
+        )
+
+        return analysis
     
     def _create_semantic_analysis_prompt(self, text: str, message: Dict[str, Any] = None) -> str:
         """
