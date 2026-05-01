@@ -269,40 +269,79 @@ class TextDirector:
         self.logger.info(f"TextDirector Qwen3 Dynamic: emozione_base={emotion}")
         model_name = self.config.google.model_flash_lite
         
-        try:
-            # Gestisci client Gateway, reale o mock
-            if isinstance(self.gemini_client, GatewayClient):
-                # Client ARIA Gateway
-                generate_config = {}
-                if hasattr(self.config.google, 'response_mime_type'):
-                    generate_config["response_mime_type"] = self.config.google.response_mime_type
-                
-                # Format contents for Gateway (Gemini 2.x standard)
-                contents = [{"role": "user", "parts": [{"text": prompt}]}]
-                
-                # Deterministic Job Meta
-                job_meta = {
-                    "project_id": project_id,
-                    "block_id": block_id,
-                    "stage": "stage_c"
-                }
+        RETRY_CODES = ["503", "unavailable", "high demand", "timeout", "network"]
+        PAUSE_CODES = ["429", "resource_exhausted", "quota_exhausted"]
+        RETRY_DELAYS = [60, 120, 180, 300, 600]
+        pause_key = f"dias:project:{project_id}:paused"
 
-                response = self.gemini_client.generate_content(
-                    contents=contents,
-                    model_id=model_name,
-                    config=generate_config,
-                    job_id=job_id  # Use fixed job_id
+        response_text = None
+        last_error = None
+
+        for attempt in range(len(RETRY_DELAYS) + 1):
+            attempt_job_id = job_id if attempt == 0 else f"{job_id}_r{attempt}"
+            try:
+                if isinstance(self.gemini_client, GatewayClient):
+                    generate_config = {}
+                    if hasattr(self.config.google, 'response_mime_type'):
+                        generate_config["response_mime_type"] = self.config.google.response_mime_type
+
+                    contents = [{"role": "user", "parts": [{"text": prompt}]}]
+                    response = self.gemini_client.generate_content(
+                        contents=contents,
+                        model_id=model_name,
+                        config=generate_config,
+                        job_id=attempt_job_id,
+                    )
+
+                    if response["status"] == "error":
+                        raise RuntimeError(f"GATEWAY_ERROR: {response.get('error')}")
+
+                    response_text = response["output"].get("text", "")
+
+                else:
+                    response_text = self.gemini_client.generate_content(prompt, model=model_name)
+
+                last_error = None
+                break  # success
+
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_quota = any(code in err_msg for code in PAUSE_CODES)
+                is_transient = any(code in err_msg for code in RETRY_CODES)
+
+                if is_quota:
+                    pause_reason = f"Gemini quota 429 in Stage C: {e}. Pausa immediata."
+                    self.redis.set(pause_key, pause_reason)
+                    self.logger.critical(f"🛑 PAUSE SET (quota 429): {pause_reason}")
+                    self.logger.error(f"Errore TextDirector Stage C: {e}")
+                    raise
+
+                if is_transient and attempt < len(RETRY_DELAYS):
+                    wait = RETRY_DELAYS[attempt]
+                    self.logger.warning(
+                        f"⚠️ Transient error (attempt {attempt + 1}/{len(RETRY_DELAYS)}), "
+                        f"retry in {wait}s: {e}"
+                    )
+                    time.sleep(wait)
+                    last_error = e
+                    continue
+
+                last_error = e
+                break
+
+        if last_error is not None:
+            err_msg = str(last_error).lower()
+            if any(code in err_msg for code in RETRY_CODES):
+                pause_reason = (
+                    f"Gemini API 503 in Stage C dopo {len(RETRY_DELAYS)} tentativi: {last_error}. "
+                    f"Pausing globally."
                 )
-                
-                if response["status"] == "error":
-                    self.logger.error(f"Gateway Error in Stage C: {response.get('error')}")
-                    raise RuntimeError(f"GATEWAY_ERROR: {response.get('error')}")
-                
-                response_text = response["output"].get("text", "")
-            
-            else:
-                # Mock client (MockGeminiClient)
-                response_text = self.gemini_client.generate_content(prompt, model=model_name)
+                self.redis.set(pause_key, pause_reason)
+                self.logger.critical(f"🛑 PAUSE SET dopo {len(RETRY_DELAYS)} retry: {pause_reason}")
+            self.logger.error(f"Errore TextDirector Stage C: {last_error}")
+            raise last_error
+
+        try:
 
             # Robust JSON parsing (v2.2)
             # Cerca l'inizio del JSON: prima un array '[', poi un oggetto '{'
@@ -383,17 +422,7 @@ class TextDirector:
             return scenes_list
 
         except Exception as e:
-            err_msg = str(e).lower()
-            is_transient = any(code in err_msg for code in ["503", "unavailable", "high demand", "429", "timeout", "network"])
-            
-            if is_transient:
-                # Imposta pausa globale su Redis
-                pause_key = "dias:status:paused"
-                pause_reason = f"Gemini API 503/429 detected in Stage C: {e}. Pausing globally to respect Google pacing."
-                self.redis.set(pause_key, pause_reason)
-                self.logger.critical(f"🛑 GLOBAL PAUSE SET: {pause_reason}")
-                
-            self.logger.error(f"Errore TextDirector Qwen3: {e}")
+            self.logger.error(f"Errore parsing/validazione Stage C: {e}")
             raise
 
 
