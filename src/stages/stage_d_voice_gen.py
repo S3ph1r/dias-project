@@ -108,6 +108,7 @@ class StageDVoiceGeneratorProxy(BaseStage):
                     self.logger.info(f"🌐 Remote Hit! Scena {unique_aria_job_id} trovata su ARIA. Scarico direttamente ignorando TTS...")
                     if self._download_file(expected_url, local_path):
                         self.logger.info(f"✅ Download completato dal Remote.")
+                        self._delete_remote_asset(expected_url)
                         duration = message.get("timing_estimate", {}).get("estimated_duration_seconds", 0)
                         message["voice_path"] = str(local_path)
                         message["voice_duration_seconds"] = duration
@@ -269,6 +270,7 @@ class StageDVoiceGeneratorProxy(BaseStage):
             # --- LOCAL SYNC ---
             if self._download_file(final_url, local_path):
                 self.logger.info(f"✅ Asset sincronizzato in locale: {local_path}")
+                self._delete_remote_asset(final_url)
                 final_path_for_registry = str(local_path)
             else:
                 self.logger.warning(f"❌ Sincronizzazione fallita per {final_url}. Uso URL remoto come fallback.")
@@ -293,6 +295,17 @@ class StageDVoiceGeneratorProxy(BaseStage):
             raise e
 
         return False
+
+    def _delete_remote_asset(self, url: str) -> None:
+        """Invia DELETE all'asset server ARIA dopo download confermato. Best-effort: ignora errori."""
+        try:
+            resp = requests.delete(url, timeout=5)
+            if resp.status_code in (200, 204, 404):
+                self.logger.info(f"🗑️ Remote asset eliminato: {url}")
+            else:
+                self.logger.warning(f"DELETE remoto risposta inattesa {resp.status_code} per {url}")
+        except Exception as e:
+            self.logger.warning(f"DELETE remoto fallito (non bloccante) per {url}: {e}")
 
     def _download_file(self, url: str, dest_path: Path) -> bool:
         """
