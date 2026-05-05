@@ -71,11 +71,19 @@ class GatewayClient:
         callback_key = f"aria:c:{self.client_id}:{job_id}"
         
         # 2. Check Mailbox (Persistence)
-        # Check if a result already exists in the callback queue (e.g., from a pre-crash task)
+        # Only replay successful results — errors must not be cached for retry.
         existing_result = self.redis.client.lindex(callback_key, 0)
         if existing_result:
-            self.logger.info(f"Found existing result for {job_id} in mailbox. Skipping submission.")
-            return self._parse_gateway_result(existing_result, job_id)
+            try:
+                cached = json.loads(existing_result)
+            except Exception:
+                cached = {}
+            if cached.get("status") == "done":
+                self.logger.info(f"Found existing success result for {job_id} in mailbox. Skipping submission.")
+                return self._parse_gateway_result(existing_result, job_id)
+            else:
+                self.logger.warning(f"Stale error result for {job_id} in mailbox — deleting and resubmitting.")
+                self.redis.client.delete(callback_key)
 
         # 3. Prepare ARIA Gateway Payload
         payload = {

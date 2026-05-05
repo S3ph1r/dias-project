@@ -222,8 +222,8 @@ class BaseStage(ABC):
                     self.logger.info(f"🔄 Re-enqueueing task for book={book_id} to the HEAD of {self.input_queue}")
                     self.redis.push_to_head(self.input_queue, message)
                     
-                    # 2. Imposta il flag di PAUSA GLOBALE in Redis
-                    pause_key = "dias:status:paused"
+                    # 2. Imposta il flag di PAUSA in Redis (progetto-specifico)
+                    pause_key = f"dias:project:{book_id}:paused"
                     pause_reason = f"Stage {self.stage_name} (Number {self.stage_number}) failed: {error_msg}"
                     self.redis.set(pause_key, pause_reason)
                     self.logger.critical(f"🛑 GLOBAL PAUSE SET: {pause_reason}")

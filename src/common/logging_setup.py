@@ -10,7 +10,14 @@ Output: stderr (per systemd journal) + file rotante opzionale.
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import time as _time
+
+def _local_now() -> datetime:
+    """Return current datetime with local timezone offset (respects /etc/timezone)."""
+    offset = _time.timezone if (_time.daylight == 0 or _time.localtime().tm_isdst == 0) else _time.altzone
+    tz = timezone(timedelta(seconds=-offset))
+    return datetime.now(tz)
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 
@@ -24,7 +31,7 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": _local_now().isoformat(),
             "stage": self.stage_name,
             "level": record.levelname,
             "message": record.getMessage(),

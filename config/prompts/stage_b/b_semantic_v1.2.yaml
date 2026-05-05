@@ -1,8 +1,9 @@
-version: "1.2"
-date: "2026-04-22"
+version: "1.2.1"
+date: "2026-04-26"
 description: |
-  Macro Semantic Analyzer v1.2 — Schema-compatible upgrade.
-  Mantiene il JSON schema del v1.0 (validato end-to-end) e integra le istruzioni 
+  Macro Semantic Analyzer v1.2.1 — Bugfix entity normalization.
+  Aggiunta istruzione normalizzazione nomi entità (rimozione articoli preposti).
+  Mantiene il JSON schema del v1.0 (validato end-to-end) e integra le istruzioni
   migliorate del v1.1: Mediterranean Prompting, subtext detection, narrator tone.
   IMPORTANTE: il JSON di output NON deve cambiare struttura per compatibilità con il parser.
 prompt_template: |
@@ -27,6 +28,8 @@ prompt_template: |
   2. narrative_markers: punti di svolta e shift di mood SIGNIFICATIVI con posizione relativa.
   3. entities: personaggi principali con emozione dominante e speaking_style in INGLESE.
      Se un personaggio parla, il speaking_style è OBBLIGATORIO.
+     Il campo "text" deve contenere il nome proprio canonico del personaggio nella lingua del testo,
+     senza articoli preposti (es. "Console" non "il Console", "Shrike" non "lo Shrike").
   4. relations: relazioni tra personaggi (dinamiche, conflitti, alleanze).
   5. concepts: concetti narrativi chiave (non tecnici generici).
 
