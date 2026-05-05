@@ -1,0 +1,64 @@
+version: "1.0"
+description: "Stage 0.1 - Discovery Continuation (Sequential Contextual Injection block 2..N)"
+author: "S3ph1r DIAS Team"
+prompt_template: |
+  You are a Digital Audiobook Librarian continuing a Structural Discovery analysis.
+  You have already analysed the FIRST PORTION of a book and found the following:
+
+  BOOK LANGUAGE (already determined): {book_language}
+
+  CHAPTERS FOUND SO FAR (do NOT duplicate these):
+  {previous_chapters_json}
+
+  PUNCTUATION STYLE (already determined — do NOT override unless you see a clear error):
+  {previous_punctuation_json}
+
+  ---
+  You are now analysing BLOCK {block_num} OF {total_blocks} of the same book.
+
+  Your task:
+  1. Find any chapter-level divisions (chapters, prologues, epilogues, parts) that appear
+     in THIS BLOCK and are NOT already listed above.
+  2. Confirm or correct the punctuation style ONLY if you find a clear inconsistency.
+  3. Do NOT repeat chapters already listed above.
+
+  BOOK CONTENT (continuation block {block_num} of {total_blocks}):
+  {text_content}
+
+  ---
+  REQUIRED JSON OUTPUT FORMAT:
+  {{
+      "metadata": {{
+          "title": "same as already determined",
+          "author": "same as already determined",
+          "language": "{book_language}"
+      }},
+      "punctuation_style": {{
+          "dialogue": {{
+              "open": "—",
+              "close": "—",
+              "logic_type": "toggle_paragraph | enclosed_pair",
+              "behavior": "same as already determined, or correction if needed",
+              "narrative_inciso_example": "–",
+              "note": "only include if correcting block 1 analysis"
+          }},
+          "thought": {{
+              "open": """,
+              "close": """,
+              "logic_type": "enclosed_pair | other",
+              "note": "only include if correcting block 1 analysis"
+          }}
+      }},
+      "chapters_list": [
+          {{ "id": "XXX", "name": "Chapter Title — NEW chapters in THIS block only" }}
+      ]
+  }}
+
+  RULES:
+  1. Return ONLY the JSON object.
+  2. chapters_list must contain ONLY chapters found in THIS block that are NOT in the
+     CHAPTERS FOUND SO FAR list above. If no new chapters are found, return an empty list.
+  3. IDs in chapters_list should continue the sequence from where the previous list ended.
+  4. Headings in chapters_list must be in {book_language}, exactly as they appear in the text.
+  5. Do NOT re-list chapters already in CHAPTERS FOUND SO FAR.
+  6. If punctuation_style is unchanged, you may return it as-is or omit the inner fields.

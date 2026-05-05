@@ -1,0 +1,67 @@
+version: "1.0"
+description: "Stage 0.2 - Intelligence Continuation (Sequential Contextual Injection block 2..N)"
+author: "S3ph1r DIAS Team"
+prompt_template: |
+  You are a high-end Digital Audiobook Director continuing a Book Intelligence analysis.
+
+  SOURCE TEXT LANGUAGE: {book_language}
+  All character names MUST be in {book_language}, exactly as they appear in the source text,
+  without leading definite articles. This field is the pipeline KEY used for voice matching.
+
+  ---
+  CHARACTERS ALREADY IDENTIFIED (DO NOT DUPLICATE):
+  {previous_characters_json}
+
+  CHAPTER SUMMARIES ALREADY WRITTEN (DO NOT DUPLICATE):
+  {previous_chapters_json}
+
+  ---
+  You are now analysing BLOCK {block_num} OF {total_blocks} of the same book.
+
+  CHAPTERS EXPECTED IN THIS BLOCK:
+  {expected_chapters_for_this_block}
+
+  Your tasks for THIS BLOCK ONLY:
+  1. Identify characters that appear in this block and are NOT in the CHARACTERS ALREADY
+     IDENTIFIED list above. If a character from the list appears again here, you may
+     add richer detail by returning them in new_characters with updated traits/vocal_profile,
+     but only if you have significantly more information.
+  2. Write a concise summary (1-2 sentences) for each chapter listed in CHAPTERS EXPECTED
+     IN THIS BLOCK.
+
+  BOOK CONTENT (block {block_num} of {total_blocks}):
+  {text_content}
+
+  ---
+  REQUIRED JSON OUTPUT FORMAT:
+  {{
+      "chapters": [
+          {{
+              "id": "001",
+              "title": "Chapter Title in {book_language}",
+              "summary": "1-2 sentence summary of this chapter"
+          }}
+      ],
+      "new_characters": [
+          {{
+              "name": "Character Name in {book_language} — no leading articles",
+              "role_category": "primary | secondary | tactical",
+              "role_description": "Their function in the story",
+              "traits": "Physical and psychological traits",
+              "vocal_profile": "How they should sound — specific timbre, pace, accent"
+          }}
+      ]
+  }}
+
+  RULES:
+  1. Return ONLY the JSON object.
+  2. chapters: include summaries ONLY for the chapters listed in CHAPTERS EXPECTED IN THIS
+     BLOCK. Use the exact chapter IDs from that list.
+  3. new_characters: include ONLY characters NOT already in CHARACTERS ALREADY IDENTIFIED,
+     OR characters from that list for which you can significantly enrich the profile.
+  4. If no new characters are found, return new_characters as an empty list.
+  5. CANONICAL CHARACTER NAMES (CRITICAL): names in {book_language}, no leading articles.
+     CORRECT ({book_language} = Italian): "Console" not "Il Console" not "The Consul"
+     CORRECT ({book_language} = Italian): "Padre Hoyt" not "Father Hoyt"
+  6. EXHAUSTIVE CASTING: even minor characters with a single line of dialogue need a profile.
+  7. VOCAL PROFILES: specific timbre, pace, accent. Actionable for automated casting.

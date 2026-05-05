@@ -18,7 +18,8 @@ prompt_template: |
   {{
       "metadata": {{
           "title": "Extracted Title",
-          "author": "Extracted Author"
+          "author": "Extracted Author",
+          "language": "The language the book is written in (e.g. Italian, English, French, Spanish)"
       }},
       "punctuation_style": {{
           "dialogue": {{
@@ -55,3 +56,4 @@ prompt_template: |
      d. Mixed formats: some books use a combination of the above.
   5. Accuracy is paramount. Use the exact characters found (e.g. observe if it is an em-dash — or a simple hyphen -).
   6. Title / Author lines at the very top of the file are NOT chapters — skip them.
+  7. LANGUAGE DETECTION: Identify the language the book is actually written in (the text language, not the author's nationality). Output it in the `metadata.language` field as a capitalized English word (e.g. "Italian", "English", "French"). This field is used downstream to enforce canonical entity naming.

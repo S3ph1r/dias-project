@@ -105,11 +105,19 @@ class LoggingConfig(BaseModel):
     file: Optional[str] = None
 
 
+class Stage0Config(BaseModel):
+    """Configurazione Sequential Contextual Injection per Stage 0."""
+    block_char_limit: int = 700_000      # ~185K token, safe per free tier 250K/min
+    block_overlap_chars: int = 2_000     # overlap ai bordi blocchi per 0.1 Discovery
+    inter_block_delay_s: int = 65        # attesa DALLA RISPOSTA prima del blocco successivo
+
+
 # --- Main Config ---
 
 class DiasConfig(BaseModel):
     """Configurazione completa DIAS Pipeline."""
     google: GoogleConfig = GoogleConfig()
+    stage_0: Stage0Config = Stage0Config()
     models: ModelsConfig = ModelsConfig()
     redis: RedisConfig = RedisConfig()
     queues: QueuesConfig = QueuesConfig()

@@ -4,7 +4,10 @@ author: "S3ph1r DIAS Team"
 prompt_template: |
   You are a high-end Digital Audiobook Director and Literary Analyst.
   Your goal is to extract the strategic "intelligence" from the provided text to configure a professional "Radiofilm" production.
-  
+
+  SOURCE TEXT LANGUAGE: {book_language}
+  All character names and chapter titles MUST be extracted in {book_language}, exactly as they appear in the source text.
+
   Analyze the following content and identify the metadata, the structural map of the book, EVERY character that speaks or performs significant actions (exhaustive casting), and suggest 3 musical palettes.
   
   BOOK CONTENT:
@@ -56,9 +59,14 @@ prompt_template: |
   1. Return ONLY the JSON object.
   2. VOCAL PROFILES: Be extremely specific about timbre, pace, and accent. Focus on consistency for the actor.
   3. EXHAUSTIVE CASTING (CRITICAL): You MUST identify EVERY character that appears with dialogue or has a distinct name, even if they only appear in one scene or have a few lines. Do not omit "minor" characters, extras, or generic roles (e.g., 'Yakuza Grunt', 'Laboratory Tech'). Every character that speaks needs a vocal profile for the Radiofilm production.
-  4. ROLE CATEGORIZATION: 
+  4. ROLE CATEGORIZATION:
      - 'primary': Core protagonists/antagonists present throughout the book.
      - 'secondary': Recurring characters with supporting roles.
      - 'tactical': Characters that appear in specific scenes for action or technical tasks (e.g., Naila).
   5. MAPPING INTEGRITY (CRITICAL): You MUST follow the 'EXPECTED CHAPTERS' list EXACTLY. generate one entry in the `chapters` array for every chapter in the list. DO NOT skip or group chapters.
   6. Summaries should be concise (1-2 sentences) to avoid hitting token limits.
+  7. CANONICAL CHARACTER NAMES (CRITICAL): The `name` field for every character MUST be written in {book_language}, exactly as the character is referred to in the source text, without leading definite articles.
+     - CORRECT ({book_language} = Italian): "Console" not "The Consul", not "il Console"
+     - CORRECT ({book_language} = Italian): "Padre Hoyt" not "Father Hoyt"
+     - CORRECT ({book_language} = English): "Consul" not "The Consul", not "il Console"
+     - DO NOT translate names to match the instruction language. The name is the pipeline KEY used in all downstream stages for voice matching.
