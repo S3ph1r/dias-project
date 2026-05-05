@@ -305,6 +305,50 @@ La partitura emotiva (PadArc) deve rispettare queste regole:
 
 ---
 
+## 10. API Hub — Endpoint Dashboard (CT201)
+
+L'API Hub (`src/api/main.py`) è servita da uvicorn su `:8000` con `--root-path /dias` (per il reverse proxy nginx `/dias/` → CT201:8000).
+
+### Endpoint di Monitoring
+
+| Endpoint | Payload | Uso |
+|----------|---------|-----|
+| `GET /api/projects/{id}` | ~270 KB — lista completa file per stage | Caricamento iniziale dashboard |
+| `GET /api/projects/{id}/status/live` | ~200 bytes — solo contatori | **Polling dashboard** (60s) |
+| `GET /api/system/workers` | ~150 bytes | Stato processi Python |
+| `GET /api/info/quota` | ~70 bytes | Quota Gemini giornaliera |
+
+### `/api/projects/{id}/status/live` — Response Schema
+
+```json
+{
+  "project_id": "cronache_del_silicio",
+  "status": "completed",
+  "active_stage": null,
+  "orchestrator_running": false,
+  "voice_done": 2174,
+  "voice_total": 2174
+}
+```
+
+Usare questo endpoint per il polling invece di `/api/projects/{id}` — evita 273 KB × N poll attraverso ngrok.
+
+### Architettura Polling Frontend (SvelteKit)
+
+- **Mount**: full load (tutti gli endpoint)
+- **Interval**: `setInterval(pollLiveStatus, 60000)` — chiama solo `/status/live`
+- **Page Visibility API**: quando il tab è nascosto, il timer viene cancellato; quando torna visibile, full reload + restart timer
+- **Risultato pratico**: un run di Stage D (48h) genera ~50 richieste ngrok invece di ~20.000
+
+### Accesso Diretto (LAN)
+
+Quando si è sulla stessa LAN, usare l'IP interno per zero overhead ngrok:
+```
+http://192.168.1.201:8000/dias/
+```
+
+---
+
 ## 9. Metriche di Successo (Target)
 
 | Area | Metrica | Target |
