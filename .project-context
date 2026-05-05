@@ -1,51 +1,61 @@
-IDENTITY:
-  name: DIAS
-  description: Distributed Immersive Audiobook System. Genera audiolibri cinematici segmentando il testo in blocchi emotivi e delegando il TTS all'orchestrazione locale ARIA.
-  repo: locale
-  stack: Python, Redis, Google Gemini, ARIA (Qwen3TTS, Fish, MusicGen), FFmpeg
-  blueprint: docs/blueprint.md
-
 ARCHITECTURE:
-  overview: Pipeline a 7 stadi (A-G) strettamente sequenziale. DIAS funge da "Regista" (segmentazione, istruzioni stilistiche agnostiche per TTS, fonetica) e delega la generazione effettiva ad ARIA su GPU remota via code Redis.
+  overview: Pipeline a 7 stadi (A-G) strettamente sequenziale. DIAS funge da "Regista"
+    (segmentazione, istruzioni stilistiche agnostiche per TTS, fonetica) e delega
+    la generazione effettiva ad ARIA su GPU remota via code Redis.
   structure:
-    src/: Codice sorgente (stages, common library)
-    docs/: Documentazione e blueprint
     data/: Storage dati diviso per stage (input, output, final)
+    docs/: Documentazione e blueprint
     scripts/: Utility di scaffolding e batch
-
-INFRASTRUCTURE:
-  nodes:
-    - Brain Node: LXC 190 (NH-Mini) - Regia e Orchestrazione
-    - Infrastructure Node: Redis Server (LXC 120) - Universal State Bus
-    - Worker Node: Consumer TTS/MusicGen su GPU (ARIA - Node 139)
-  storage: /home/Projects/NH-Mini/sviluppi/dias/data/ (Sincronizzato tra LXC 190 e 201)
-
+    src/: Codice sorgente (stages, common library)
 COMPONENTS:
   list:
-    - TextIngester (A): Raggruppamento PDF in chunk
-    - SemanticAnalyzer (B): Profilazione EMOTIVA macro (API Gemini)
-    - SceneDirector (C): Regia fine, normalizzazione e istruzioni Qwen3-TTS
-    - VoiceGenProxy (D): Integrazione agnostica ARIA via Redis 120
-
-KNOWLEDGE_INDEX:
-  entries:
-    - docs/blueprint.md
-    - docs/dias-component-inventory.md
-    - docs/development-roadmap.md
-
+  - TextIngester (A): Raggruppamento PDF in chunk
+  - SemanticAnalyzer (B): Profilazione EMOTIVA macro (API Gemini)
+  - SceneDirector (C): Regia fine, normalizzazione e istruzioni Qwen3-TTS
+  - VoiceGenProxy (D): Integrazione agnostica ARIA via Redis 120
 CREDENTIALS:
   list:
-    - google.api_key (Gemini API access)
-
+  - google.api_key (Gemini API access)
+DEVELOPMENT_PHASE:
+  constraints: Quota Gemini (1000 chiamate/giorno configurate) e disponibilità GPU
+    ARIA.
+  phase: production
+  priorities: Validazione massiva 503 scene su ARIA e avvio Stage E (MusicGen)
 ERROR_HANDLING:
   patterns:
-    - "QUOTA_EXHAUSTED: Attesa reset giornaliero quota Gemini su Redis 120"
-    - "Coda Voice ferma: Verificare stato 'active' dei nodi ARIA su Redis 120"
-
-DEVELOPMENT_PHASE:
-  phase: production_testing
-  priorities: Validazione massiva 503 scene su ARIA e avvio Stage E (MusicGen)
-  constraints: Quota Gemini (1000 chiamate/giorno configurate) e disponibilità GPU ARIA.
-
+  - 'QUOTA_EXHAUSTED: Attesa reset giornaliero quota Gemini su Redis 120'
+  - 'Coda Voice ferma: Verificare stato ''active'' dei nodi ARIA su Redis 120'
+IDENTITY:
+  blueprint: docs/blueprint.md
+  description: Distributed Immersive Audiobook System. Genera audiolibri cinematici
+    segmentando il testo in blocchi emotivi e delegando il TTS all'orchestrazione
+    locale ARIA.
+  name: DIAS
+  repo: locale
+  stack: Python, Redis, Google Gemini, ARIA (Qwen3TTS, Fish, MusicGen), FFmpeg
+INFRASTRUCTURE:
+  nodes:
+  - Brain Node: LXC 190 (NH-Mini) - Regia e Orchestrazione
+  - Infrastructure Node: Redis Server (LXC 120) - Universal State Bus
+  - Worker Node: Consumer TTS/MusicGen su GPU (ARIA - Node 139)
+  storage: /home/Projects/NH-Mini/sviluppi/dias/data/ (Sincronizzato tra LXC 190 e
+    201)
+KNOWLEDGE_INDEX:
+  entries:
+  - path: docs/blueprint.md
+    doc_trigger: "cambio architetturale approvato (nuovo stage, nuovo contratto dati, modifica flusso pipeline)"
+    lint_check: "file exists, size > 5KB"
+  - path: docs/dias-state-of-gaps.md
+    doc_trigger: "nuovo gap identificato, gap esistente risolto o cambiato stato"
+    lint_check: "file exists, non-empty, contains open or resolved gap entries"
+  - path: docs/dias-voice-pipeline-quality.md
+    doc_trigger: "modifica parametri TTS, nuova analisi qualità voce, cambio stage C/D/F"
+    lint_check: "file exists, non-empty"
+  - path: docs/technical-reference.md
+    doc_trigger: "aggiunta/modifica API, contratti dati, schema Redis, formato task"
+    lint_check: "file exists, size > 3KB"
+  - path: docs/dias-aria-integration-master.md
+    doc_trigger: "modifica al protocollo di integrazione DIAS↔ARIA (payload, callback, URL)"
+    lint_check: "file exists, non-empty"
 OVERRIDES:
   list: []
