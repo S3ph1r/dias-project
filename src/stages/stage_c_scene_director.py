@@ -643,25 +643,23 @@ class SceneDirector(BaseStage):
         return "neutro"
         
     def _generate_voice_direction(self, scene: Dict[str, Any], macro_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Genera direzioni vocali per la scena"""
-        emotion = scene.get("primary_emotion", "neutro")
-        
-        # Mappa emozioni a parametri vocali (in Italiano)
-        emotion_params = {
-            "gioia": {"pace_factor": 1.1, "pitch_shift": 2, "energy": 0.8, "desc": "Tono gioioso e vivace"},
-            "tristezza": {"pace_factor": 0.9, "pitch_shift": -2, "energy": 0.3, "desc": "Tono malinconico e dimesso"},
-            "tensione": {"pace_factor": 0.95, "pitch_shift": 1, "energy": 0.7, "desc": "Tono teso e incalzante"},
-            "relax": {"pace_factor": 1.0, "pitch_shift": 0, "energy": 0.5, "desc": "Tono rilassato e calmo"},
-            "neutro": {"pace_factor": 1.0, "pitch_shift": 0, "energy": 0.6, "desc": "Tono narrativo standard"}
-        }
-        
-        params = emotion_params.get(emotion, emotion_params["neutro"])
-        
+        """Genera direzioni vocali via formula continua da Stage B floats (P4/P5 - 2026-05-01).
+        pace_factor e pitch_shift rimossi — erano dead code (Qwen3 non li accetta).
+        energy e subtalker_temperature calcolati da arousal/tension di Stage B.
+        """
+        block_analysis = macro_analysis.get("block_analysis", {})
+        arousal = float(block_analysis.get("arousal", 0.5))
+        tension = float(block_analysis.get("tension", 0.5))
+
+        energy = round(0.4 + (arousal * 0.5), 3)
+        temperature = round(0.6 + (energy * 0.2), 3)
+        subtalker_temperature = round(0.3 + (arousal * 0.4), 3)
+
         return {
-            "emotion_description": params.get("desc", "Tono narrativo"),
-            "pace_factor": params["pace_factor"],
-            "pitch_shift": params["pitch_shift"],
-            "energy": params["energy"],
+            "emotion_description": scene.get("primary_emotion", "neutro"),
+            "energy": energy,
+            "temperature": temperature,
+            "subtalker_temperature": subtalker_temperature,
             "recommended_silence_before_ms": 500,
             "recommended_silence_after_ms": 1000
         }
@@ -702,10 +700,13 @@ class SceneDirector(BaseStage):
                                    chapter_id: str, job_id: str) -> Dict[str, Any]:
         """Crea scene script basato su una scena generata DINAMICAMENTE da Gemini."""
         
-        # Determiniamo l'emozione base per i parametri tecnici (music, ambient)
-        # Se Gemini non l'ha fornita esplicitamente, usiamo quella del blocco
+        # P3 (2026-05-01): usa primary_emotion per-scena dal LLM (v2.6.0+)
+        # con fallback al blocco macro di Stage B se non fornita
         block_analysis = macro_analysis.get("block_analysis", {})
-        primary_emotion = block_analysis.get("primary_emotion", "neutro")
+        primary_emotion = (
+            dynamic_scene.get("primary_emotion")
+            or block_analysis.get("primary_emotion", "neutro")
+        )
         
         # Mock scene object per i generatori esistenti
         # --- NEW: Hierarchical Scene ID for Idempotency ---
@@ -746,6 +747,8 @@ class SceneDirector(BaseStage):
             "primary_emotion": primary_emotion,
             "word_count": word_count,
             "voice_direction": voice_direction,
+            "temperature": voice_direction.get("temperature"),
+            "subtalker_temperature": voice_direction.get("subtalker_temperature"),
             "audio_layers": audio_layers,
             "timing_estimate": {
                 "estimated_duration_seconds": estimated_seconds,

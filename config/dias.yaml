@@ -19,7 +19,7 @@ stage_0:
 
 # Stage B and C prompt versions (A/B testing)
 stage_b_prompt_path: "config/prompts/stage_b/b_semantic_v1.4.yaml"
-stage_c_prompt_path: "config/prompts/stage_c/c_monastic_v2.5.0.yaml"
+stage_c_prompt_path: "config/prompts/stage_c/c_monastic_v2.6.0.yaml"
 
 # Local Models (GPU Worker)
 models:
