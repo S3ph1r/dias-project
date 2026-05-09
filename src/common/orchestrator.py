@@ -380,9 +380,9 @@ class SerialOrchestrator:
                 self._publish_state(stage_id, "running", worker_alive, progress=progress)
 
             if stage_id == "stage_a" and completed == 0:
-                time.sleep(10)
+                time.sleep(5)
 
-            time.sleep(30)
+            time.sleep(5)
 
     def _is_worker_running(self, stage_info: Dict[str, Any]) -> bool:
         """Controlla se esiste un processo del worker specifico basandosi sul percorso dello script"""
@@ -451,6 +451,16 @@ class SerialOrchestrator:
                     logger.info("⏭️ Ingestion Stage A già presente. Salto lo stadio.")
                     continue
                     
+            # Global pause check before starting a new stage
+            paused_reason = self.redis.get(f"dias:project:{self.project_id}:paused")
+            if paused_reason:
+                logger.warning(f"⚠️ Orchestrator in pausa prima dello stadio {stage['id']}. Attendo...")
+                self._publish_state(stage["id"], "paused", False, paused_reason=paused_reason)
+                # Attendiamo che venga tolta la pausa prima di procedere al prossimo stadio
+                while self.redis.get(f"dias:project:{self.project_id}:paused"):
+                    time.sleep(5)
+                logger.info(f"▶️ Pausa rimossa. Procedo con lo stadio {stage['id']}.")
+
             self.run_stage(stage)
             # Ferma il worker prima di passare al prossimo per evitare collisioni API
             self.stop_all_workers()

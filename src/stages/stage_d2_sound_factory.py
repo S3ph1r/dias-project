@@ -554,6 +554,12 @@ class StageD2SoundFactory:
         }
 
         for asset in assets_to_process:
+            # Check for manual pause
+            pause_key = f"dias:project:{self.project_id}:paused"
+            if self.redis.client.get(pause_key):
+                self.logger.warning(f"⚠️ Progetto {self.project_id} in PAUSA. Sospendo la produzione sonora.")
+                break
+
             cid = asset["canonical_id"]
             asset_type = asset["type"]
             is_pad = asset_type == "pad"

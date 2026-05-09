@@ -623,7 +623,16 @@ class StageEMixdown:
         if mode == "all":
             return all(self.render(chunk_id, m) for m in self._MODE_SUFFIX)
 
+        # Check for manual pause
+        pause_key = f"dias:project:{self.project_id}:paused"
+        from src.common.redis_factory import get_redis_client
+        redis = get_redis_client()
+        if redis.client.get(pause_key):
+            self.logger.warning(f"⚠️ Progetto {self.project_id} in PAUSA. Mixdown annullato.")
+            return False
+
         if mode not in self._MODE_SUFFIX:
+
             self.logger.error(f"❌ Mode non valido: '{mode}'. Validi: {list(self._MODE_SUFFIX)}")
             return False
 

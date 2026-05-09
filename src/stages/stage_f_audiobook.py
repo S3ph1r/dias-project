@@ -331,6 +331,13 @@ def listen_queue():
                 project_id = msg.get("project_id")
                 if not project_id: continue
                 
+                # Check for manual pause
+                pause_key = f"dias:project:{project_id}:paused"
+                if redis.client.get(pause_key):
+                    logger.warning(f"⚠️ Progetto {project_id} in PAUSA. Salto il mastering per ora.")
+                    continue
+
+                
                 redis.set(f"dias:project:{project_id}:active_stage", "stage_f")
                 redis.client.hset(f"dias:project:{project_id}:status", "stage_f_progress", "10") # 10% started
                 
