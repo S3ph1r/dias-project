@@ -89,6 +89,23 @@
   const isPipelineRunning = $derived(orchestratorRunning);
   const isPipelinePaused = $derived(!!pausedReason);
   const isWorkerActive = $derived(isPipelineRunning && workerRunning && !isPipelinePaused);
+  
+  // State for lazy rendering of stage files (infinite scroll)
+  let visibleFilesCount = $state<Record<string, number>>({});
+
+  const handleScroll = (e: Event, stageId: string, totalFiles: number) => {
+    const target = e.target as HTMLElement;
+    const { scrollTop, scrollHeight, clientHeight } = target;
+    
+    // Se siamo vicini al fondo (es. 20px), carichiamo altri 50 file
+    if (scrollTop + clientHeight >= scrollHeight - 20) {
+      const currentCount = visibleFilesCount[stageId] || 50;
+      if (currentCount < totalFiles) {
+        visibleFilesCount[stageId] = currentCount + 50;
+      }
+    }
+  };
+
   const activeWorkerName = $derived(
     isPipelinePaused ? 'Paused' :
     !isPipelineRunning ? (
@@ -506,8 +523,8 @@
       {/if}
     </div>
 
-    <!-- Voice Control Carousel (Phase 2) -->
-    {#if voiceIds.length > 0}
+    <!-- Voice Control Carousel (Solo in Pre-production) -->
+    {#if activeTab === 'preproduction' && voiceIds.length > 0}
       <div class="bg-slate-900/40 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 shadow-2xl">
         <VoiceCarousel 
           {voices} 
@@ -521,24 +538,41 @@
     {#if activeTab === 'chapters'}
       <div class="space-y-3">
         {#if chapters.length === 0}
-          <div class="py-16 text-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/20 space-y-6">
-            <div class="space-y-2">
-              <p class="text-slate-500 italic">No chapter data available yet. Stage C must complete first.</p>
+          {#if fingerprint?.chapters_list || fingerprint?.chapters}
+            <!-- Skeleton from Fingerprint -->
+            <p class="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 ml-1">Struttura Analizzata (Stage C non ancora eseguito)</p>
+            {#each (fingerprint.chapters_list || fingerprint.chapters || []) as chap, i}
+              <div class="bg-slate-900/20 border border-slate-800/50 rounded-2xl p-5 flex items-center gap-4 opacity-60">
+                <span class="text-[10px] font-mono text-slate-600">{String(i+1).padStart(3,'0')}</span>
+                <div class="flex-1">
+                  <p class="text-sm font-bold text-slate-400 italic">{chap.title}</p>
+                  <p class="text-[10px] text-slate-600 truncate">{chap.summary}</p>
+                </div>
+                <span class="px-3 py-1 rounded-full border border-slate-800 text-[10px] font-black text-slate-600 uppercase tracking-wider">
+                  Pending Stage C
+                </span>
+              </div>
+            {/each}
+          {:else}
+            <div class="py-16 text-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/20 space-y-6">
+              <div class="space-y-2">
+                <p class="text-slate-500 italic">No chapter data available yet. Stage C must complete first.</p>
+                {#if !fingerprint}
+                  <p class="text-slate-400 text-sm">Il progetto è nuovo. Avvia l'intelligenza per estrarre la struttura.</p>
+                {/if}
+              </div>
+              
               {#if !fingerprint}
-                <p class="text-slate-400 text-sm">Il progetto è nuovo. Avvia l'intelligenza per estrarre la struttura.</p>
+                <button 
+                  onclick={handleStartAnalysis}
+                  disabled={analyzing}
+                  class="px-8 py-3 rounded-2xl bg-sky-500 hover:bg-sky-400 text-white font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-sky-500/20"
+                >
+                  {analyzing ? 'Analysis In Progress...' : '🚀 Start Stage 0 Analysis'}
+                </button>
               {/if}
             </div>
-            
-            {#if !fingerprint}
-              <button 
-                onclick={handleStartAnalysis}
-                disabled={analyzing}
-                class="px-8 py-3 rounded-2xl bg-sky-500 hover:bg-sky-400 text-white font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-sky-500/20"
-              >
-                {analyzing ? 'Analysis In Progress...' : '🚀 Start Stage 0 Analysis'}
-              </button>
-            {/if}
-          </div>
+          {/if}
         {:else}
           {#each chapters as chunk}
             {@const cfg = getChunkStatusCfg(chunk.status)}
@@ -732,9 +766,15 @@
             </div>
 
             <div class="flex-1 space-y-3 overflow-hidden">
-              <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Assets ({stage.files.filter(f => stage.id !== 'stage_d' || f.endsWith('.wav')).length})</p>
-              <div class="max-h-[240px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                {#each stage.files.filter(f => stage.id !== 'stage_d' || f.endsWith('.wav')) as file}
+              {#if stage.files}
+                {@const filteredFiles = stage.files.filter(f => stage.id !== 'stage_d' || f.endsWith('.wav'))}
+                {@const limit = visibleFilesCount[stage.id] || 50}
+              <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Assets ({filteredFiles.length})</p>
+              <div 
+                class="max-h-[240px] overflow-y-auto space-y-2 pr-1 custom-scrollbar"
+                onscroll={(e) => handleScroll(e, stage.id, filteredFiles.length)}
+              >
+                {#each filteredFiles.slice(0, limit) as file}
                   <div class="group flex items-center justify-between p-3 rounded-xl bg-slate-950/50 border border-slate-800 hover:border-slate-700 transition-all">
                     <span class="text-xs font-mono text-slate-300 truncate flex-1">{file}</span>
                     
@@ -765,7 +805,13 @@
                 {:else}
                   <p class="text-slate-600 text-xs italic">No assets yet.</p>
                 {/each}
+                {#if filteredFiles.length > limit}
+                   <div class="py-2 text-center text-[10px] font-bold text-slate-600 uppercase tracking-widest animate-pulse">
+                     Scroll per caricare altri {Math.min(50, filteredFiles.length - limit)} di {filteredFiles.length}
+                   </div>
+                {/if}
               </div>
+              {/if}
             </div>
           </div>
         {/each}

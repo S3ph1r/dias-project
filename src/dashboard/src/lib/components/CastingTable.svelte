@@ -120,6 +120,23 @@
     </div>
   </div>
 
+  <!-- FINAL ACTIONS (MOVED UP) -->
+  <div class="flex justify-start py-4">
+    <button 
+      onclick={handleSave}
+      disabled={saving}
+      class="px-10 py-3 rounded-2xl bg-sky-500 hover:bg-sky-400 text-white text-xs font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 shadow-xl shadow-sky-500/30 flex items-center gap-2"
+    >
+      {#if saving}
+        <div class="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+        Salvataggio...
+      {:else}
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Salva Configurazione Pre-produzione
+      {/if}
+    </button>
+  </div>
+
   <!-- CHARACTER CASTING TABLE -->
   <div class="space-y-4 pt-4">
     <div class="flex items-center gap-2">
@@ -187,14 +204,4 @@
     </div>
   </div>
 
-  <!-- FINAL ACTIONS -->
-  <div class="flex justify-center pt-8 border-t border-slate-800/50">
-    <button 
-      onclick={handleSave}
-      disabled={saving}
-      class="px-12 py-4 rounded-2xl bg-sky-500 hover:bg-sky-400 text-white text-sm font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 shadow-2xl shadow-sky-500/40"
-    >
-      {saving ? 'Salvataggio in corso...' : '💾 Salva Configurazione Pre-produzione'}
-    </button>
-  </div>
 </div>

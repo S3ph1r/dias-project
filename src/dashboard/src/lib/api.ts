@@ -65,6 +65,12 @@ export interface ChapterFingerprint {
     summary: string;
 }
 
+export interface PaletteProposal {
+    name: string;
+    description: string;
+    suitability: string;
+}
+
 export interface Fingerprint {
     metadata: {
         title: string;
@@ -78,12 +84,16 @@ export interface Fingerprint {
         narrator: { vibe: string; style: string };
         characters: CharacterProfile[];
     };
+    sound_design: {
+        palette_proposals: PaletteProposal[];
+    };
 }
 
 export interface PreproductionData {
     casting: Record<string, string>;
     palette_choice?: string;
     global_voice?: string;
+    characters_dossier: CharacterProfile[];
 }
 
 // base da $app/paths è il paths.base di svelte.config.js:
