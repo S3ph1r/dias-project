@@ -183,6 +183,23 @@ class BaseStage(ABC):
                     continue  # Timeout, ricontrolla _running
 
                 book_id = message.get("project_id") or message.get("book_id") or "unknown"
+
+                # --- CONTROLLO PAUSA MANUALE ---
+                # Se il progetto è in pausa (chiave impostata da Dashboard o da errore),
+                # rimette il messaggio in TESTA alla coda senza perderlo ed esce.
+                if book_id != "unknown":
+                    pause_key = f"dias:project:{book_id}:paused"
+                    paused_reason = self.redis.client.get(pause_key)
+                    if paused_reason:
+                        reason_str = paused_reason.decode('utf-8') if isinstance(paused_reason, bytes) else paused_reason
+                        self.logger.info(
+                            f"⏸️ Progetto {book_id} in pausa ({reason_str}). "
+                            f"Task rimesso in testa a '{self.input_queue}'. Worker in uscita."
+                        )
+                        self.redis.push_to_head(self.input_queue, message)
+                        self._running = False
+                        break
+
                 self.logger.info(
                     f"Processing message for book={book_id}",
                     extra={"book_id": book_id},

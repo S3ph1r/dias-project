@@ -904,6 +904,24 @@ async def resume_project_pipeline(project_id: str, payload: Dict[str, Any] = Non
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.post("/projects/{project_id}/pause")
+async def pause_pipeline(project_id: str):
+    """
+    Mette in pausa la pipeline per il progetto specificato.
+    Setta la chiave Redis 'dias:project:{id}:paused'.
+    Il worker attivo finirà la scena corrente, poi si spegnerà e rimmetterà
+    il prossimo task in testa alla coda. L'orchestratore non lo riavvierà
+    finché non viene chiamato /unpause o /resume.
+    """
+    clean_title = persistence.normalize_id(project_id)
+    pause_key = f"dias:project:{clean_title}:paused"
+    already_paused = redis_client.get(pause_key)
+    if already_paused:
+        return {"status": "already_paused", "message": "Il progetto è già in pausa."}
+    redis_client.set(pause_key, "Pausa manuale da Dashboard")
+    logger.info(f"⏸️ Pausa manuale richiesta per progetto {clean_title}")
+    return {"status": "success", "message": f"Pipeline di {clean_title} in pausa. Attendi il completamento della scena corrente."}
+
 @api_router.post("/projects/{project_id}/unpause")
 async def unpause_pipeline(project_id: str):
     """Rimuove la pausa progetto-specifica."""

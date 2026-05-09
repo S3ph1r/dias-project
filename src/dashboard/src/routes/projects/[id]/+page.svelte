@@ -7,7 +7,7 @@
     fetchProjectDetails, pushSceneToStageD, fetchVoices, resumePipeline,
     checkResume, resetStage, fetchChapters, fetchFingerprint, fetchPreproduction,
     analyzeProject, fetchWorkerStatus, triggerAudiobookMaster, fetchProjectLiveStatus,
-    fetchAudiobookChapters,
+    fetchAudiobookChapters, pausePipeline, unpausePipeline,
     API_BASE,
     type Project, type ProjectStage, type ChapterSummary, type Fingerprint,
     type PreproductionData, type AudiobookChapter
@@ -24,6 +24,7 @@
   let processingScene = $state<string | null>(null);
   let resetting = $state<string | null>(null);
   let resuming = $state(false);
+  let pausing = $state(false);
   let autoRefreshEnabled = $state(true);
   let refreshInterval: any;
   let eventSource: EventSource | null = null;
@@ -100,9 +101,9 @@
     if (!silent) loading = true;
     try {
       const [details, voiceData, chapterData, statusData] = await Promise.all([
-        fetchProjectDetails(page.params.id),
+        fetchProjectDetails(page.params.id as string),
         fetchVoices(),
-        fetchChapters(page.params.id),
+        fetchChapters(page.params.id as string),
         fetchWorkerStatus()
       ]);
 
@@ -136,8 +137,8 @@
   const loadPreprodData = async () => {
     loadingPreprod = true;
     try {
-      const fp = await fetchFingerprint(page.params.id);
-      const pp = await fetchPreproduction(page.params.id);
+      const fp = await fetchFingerprint(page.params.id as string);
+      const pp = await fetchPreproduction(page.params.id as string);
       fingerprint = fp;
       preproduction = pp;
       if (pp.global_voice && voices[pp.global_voice]) {
@@ -168,7 +169,7 @@
   const pollLiveStatus = async () => {
     if (!autoRefreshEnabled || loading || resuming || resetting) return;
     try {
-      const live = await fetchProjectLiveStatus(page.params.id);
+      const live = await fetchProjectLiveStatus(page.params.id as string);
       if (project) {
         project = { ...project, status: live.status, active_stage: live.active_stage };
       }
@@ -204,7 +205,7 @@
     // SSE: receive push events from the backend and poll immediately
     const connectSSE = () => {
       eventSource?.close();
-      eventSource = new EventSource(`${API_BASE}/projects/${page.params.id}/events`);
+      eventSource = new EventSource(`${API_BASE}/projects/${page.params.id as string}/events`);
       eventSource.onmessage = () => { pollLiveStatus(); };
       eventSource.onerror = () => {
         // EventSource reconnects automatically; close and retry after 5s on repeated failures
@@ -271,6 +272,22 @@
     }
   };
 
+  const handlePausePipeline = async () => {
+    if (!project) return;
+    pausing = true;
+    try {
+      await pausePipeline(project.id);
+      // Optimistic update: show paused state immediately
+      pausedReason = 'Pausa manuale da Dashboard';
+      orchestratorRunning = true;
+    } catch (e) {
+      alert(`Errore: ${(e as Error).message}`);
+    } finally {
+      pausing = false;
+      await pollLiveStatus();
+    }
+  };
+
   const handleTriggerMaster = async () => {
     if (!project) return;
     try {
@@ -284,7 +301,7 @@
 
   $effect(() => {
     if (activeTab === 'audiobook' && project?.audiobook && audiobookChapters.length === 0) {
-      fetchAudiobookChapters(page.params.id).then(chs => { audiobookChapters = chs; });
+      fetchAudiobookChapters(page.params.id as string).then(chs => { audiobookChapters = chs; });
     }
   });
 
@@ -426,6 +443,24 @@
             }"></div>
             {activeWorkerName}
           </div>
+
+          <!-- Pause button — visibile solo quando il worker è attivo -->
+          {#if isWorkerActive}
+            <button
+              onclick={handlePausePipeline}
+              disabled={pausing}
+              title="Mette in pausa dopo la scena corrente"
+              class="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500 hover:text-slate-900 shadow-lg"
+            >
+              {#if pausing}
+                <div class="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin"></div>
+                Pausing...
+              {:else}
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                Pause
+              {/if}
+            </button>
+          {/if}
 
           <!-- Resume button — unico, comportamento smart -->
           <button

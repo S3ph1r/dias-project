@@ -162,6 +162,23 @@ export async function resumePipeline(projectId: string, voiceOverride?: string):
     return res.json();
 }
 
+export async function pausePipeline(projectId: string): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/pause`, {
+        method: 'POST'
+    });
+    if (!res.ok) throw new Error('Failed to pause pipeline');
+    return res.json();
+}
+
+export async function unpausePipeline(projectId: string): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${API_BASE}/projects/${projectId}/unpause`, {
+        method: 'POST'
+    });
+    if (!res.ok) throw new Error('Failed to unpause pipeline');
+    return res.json();
+}
+
+
 export async function fetchChapters(projectId: string): Promise<ChapterSummary[]> {
     const res = await fetch(`${API_BASE}/projects/${projectId}/chapters`);
     if (!res.ok) throw new Error('Failed to fetch chapters');
