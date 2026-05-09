@@ -14,6 +14,8 @@ export interface Project {
     last_modified: string;
     total_chunks?: number;
     overall_progress?: number;
+    voice_done?: number;
+    voice_total?: number;
     stages?: ProjectStage[];
     audiobook?: {
         url: string;

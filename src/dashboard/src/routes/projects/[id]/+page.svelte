@@ -78,6 +78,13 @@
 
   // Derived sorted list of voice IDs for backwards compatibility and UI loops
   const voiceIds = $derived(Object.keys(voices).sort());
+  
+  const overallProgress = $derived(
+    project?.voice_total && project.voice_total > 0 
+      ? Math.round(((project.voice_done || 0) / project.voice_total) * 100) 
+      : (project?.overall_progress || 0)
+  );
+
   // Source of truth: stato pubblicato dall'orchestratore in Redis (via live status endpoint)
   const isPipelineRunning = $derived(orchestratorRunning);
   const isPipelinePaused = $derived(!!pausedReason);
@@ -86,7 +93,7 @@
     isPipelinePaused ? 'Paused' :
     !isPipelineRunning ? (
       project?.status === 'completed' ? 'Completed' :
-      (project?.overall_progress ?? 0) > 0 ? 'Stopped' :
+      overallProgress > 0 ? 'Stopped' :
       'Pipeline Idle'
     ) :
     !workerRunning ? 'Stopped' :
@@ -171,7 +178,13 @@
     try {
       const live = await fetchProjectLiveStatus(page.params.id as string);
       if (project) {
-        project = { ...project, status: live.status, active_stage: live.active_stage };
+        project = { 
+          ...project, 
+          status: live.status, 
+          active_stage: live.active_stage,
+          voice_done: live.voice_done,
+          voice_total: live.voice_total
+        };
       }
       orchestratorRunning = live.orchestrator_running ?? false;
       workerRunning = live.worker_running ?? false;
@@ -193,8 +206,8 @@
       if (document.hidden) {
         clearInterval(refreshInterval);
       } else {
-        // Tab back in focus: full reload then resume polling
-        loadData(true);
+        // Tab back in focus: lightweight poll then resume periodic polling
+        pollLiveStatus();
         startPolling();
       }
     };
@@ -264,7 +277,8 @@
       orchestratorRunning = true;
       workerRunning = true;
       pausedReason = null;
-      await loadData(true);
+      // Trigger a lightweight poll instead of full loadData
+      pollLiveStatus();
     } catch (e) {
       alert(`Errore: ${(e as Error).message}`);
     } finally {
@@ -401,8 +415,8 @@
         <p class="text-3xl font-black text-emerald-400">{chapterStats.total_wavs}</p>
       </div>
       <div class="bg-slate-900/40 backdrop-blur-xl border border-slate-800 p-5 rounded-2xl space-y-1">
-        <p class="text-slate-500 font-bold uppercase text-[10px] tracking-widest">Overall</p>
-        <p class="text-3xl font-black text-sky-400">{project?.overall_progress || 0}%</p>
+        <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Avanzamento Totale</p>
+        <p class="text-3xl font-black text-sky-400">{overallProgress}%</p>
       </div>
     </div>
 
@@ -427,7 +441,7 @@
         >🎧 Audiobook</button>
       </div>
 
-      {#if project && (project.overall_progress ?? 0) < 100}
+      {#if project && overallProgress < 100}
         <div class="flex items-center gap-3">
           <!-- Status pill -->
           <div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest shadow-lg {
@@ -480,7 +494,7 @@
               Resuming...
             {:else}
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 9-14 9V3z"/></svg>
-              {(project?.overall_progress ?? 0) === 0 ? 'Start Production' : 'Resume Pipeline'}
+              {overallProgress === 0 ? 'Start Production' : 'Resume Pipeline'}
             {/if}
           </button>
         </div>
