@@ -262,6 +262,7 @@
       await resumePipeline(project.id, selectedVoice || undefined);
       // Optimistic update: show running state immediately without waiting for next poll
       orchestratorRunning = true;
+      workerRunning = true;
       pausedReason = null;
       await loadData(true);
     } catch (e) {
@@ -280,6 +281,7 @@
       // Optimistic update: show paused state immediately
       pausedReason = 'Pausa manuale da Dashboard';
       orchestratorRunning = true;
+      workerRunning = false;
     } catch (e) {
       alert(`Errore: ${(e as Error).message}`);
     } finally {
@@ -450,7 +452,7 @@
               onclick={handlePausePipeline}
               disabled={pausing}
               title="Mette in pausa dopo la scena corrente"
-              class="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500 hover:text-slate-900 shadow-lg"
+              class="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-900 shadow-lg shadow-amber-500/20"
             >
               {#if pausing}
                 <div class="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin"></div>
